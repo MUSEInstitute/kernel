@@ -236,6 +236,7 @@ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3588-evb1-lp4-v10-edp-NV140QUM-N61.dtb
 dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3588-evb1-lp4-v10-hdmi2dp.dtb
 dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3588-evb1-lp4-v10-ipc-6x-linux.dtb
 dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3588-evb1-lp4-v10-linux.dtb
+dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3588-muse.dtb
 dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3588-evb1-lp4-v10-linux-amp.dtb
 dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3588-evb1-lp4-v10-linux-ipc.dtb
 dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3588-evb1-lp4-v10-lt6911uxe.dtb

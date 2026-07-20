@@ -1,0 +1,71 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Copyright (c) 2024 MUSE Institute
+ *
+ * Device Tree for MUSE RK3588 Board
+ * - eMMC boot
+ * - LPDDR4
+ * - RK806 dual PMIC
+ */
+
+/dts-v1/;
+
+#include "rk3588-evb1-lp4.dtsi"
+#include "rk3588-linux.dtsi"
+
+/ {
+	model = "MUSE RK3588 Board";
+	compatible = "muse,rk3588-muse", "rockchip,rk3588";
+};
+
+/* eMMC always enabled for eMMC boot boards */
+&sdhci {
+	status = "okay";
+};
+
+/* SD card slot, enable when hardware is confirmed */
+&sdmmc {
+	status = "disabled";
+};
+
+/* Remove EVB-specific ADC keys */
+&adc_keys {
+	status = "disabled";
+};
+
+/* Remove ES8388 audio codec (EVB-specific) */
+&es8388 {
+	status = "disabled";
+};
+
+&es8388_sound {
+	status = "disabled";
+};
+
+/* Remove IMX415 camera (EVB-specific) */
+&imx415 {
+	status = "disabled";
+};
+
+/* SARADC for ADC keys; keep enabled for thermal, etc. */
+&saradc {
+	status = "okay";
+};
+
+/* HDMI0 output enabled by default */
+&hdmi0 {
+	status = "okay";
+};
+
+&hdmi0_in_vp0 {
+	status = "okay";
+};
+
+&hdptxphy_hdmi0 {
+	status = "okay";
+};
+
+&route_hdmi0 {
+	status = "okay";
+	connect = <&vp0_out_hdmi0>;
+};
