@@ -49,16 +49,12 @@
 	status = "disabled";
 };
 
-/* Disable EVB-only peripherals from rk3588-evb.dtsi */
+/* Disable EVB-only nodes present in rk3588-evb.dtsi.
+ * Note: es8388 / es8388_sound live in board-specific EVB dtsi
+ * (e.g. rk3588-evb1-lp4.dtsi), not in rk3588-evb.dtsi, so do not
+ * reference those labels here.
+ */
 &adc_keys {
-	status = "disabled";
-};
-
-&es8388 {
-	status = "disabled";
-};
-
-&es8388_sound {
 	status = "disabled";
 };
 
