@@ -4,36 +4,56 @@
  *
  * Device Tree for MUSE RK3588 Board
  * - eMMC boot
- * - LPDDR4
- * - RK806 dual PMIC
+ * - LPDDR4X
+ * - RK806 single PMIC + discrete RK8602/RK8603
+ *
+ * Discrete rails (confirmed):
+ *   RK8602: VDD_CPU_BIG0, VDD_NPU
+ *   RK8603: VDD_CPU_BIG1
+ *
+ * NOTE: I2C bus / pinmux for RK860x currently follows Rockchip EVB7
+ * single-PMIC convention (i2c0m2 @0x42/0x43, i2c1m2 @0x42).
+ * Confirm against schematic and adjust if different.
  */
 
 /dts-v1/;
 
-#include "rk3588-evb1-lp4.dtsi"
+#include "rk3588.dtsi"
+#include "rk3588-evb.dtsi"
+#include "rk3588-rk806-single.dtsi"
 #include "rk3588-linux.dtsi"
 
 / {
 	model = "MUSE RK3588 Board";
 	compatible = "muse,rk3588-muse", "rockchip,rk3588";
+
+	/* Required intermediate supply referenced by rk3588-rk806-single.dtsi */
+	vcc_1v1_nldo_s3: vcc-1v1-nldo-s3 {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_1v1_nldo_s3";
+		regulator-always-on;
+		regulator-boot-on;
+		regulator-min-microvolt = <1100000>;
+		regulator-max-microvolt = <1100000>;
+		vin-supply = <&vcc5v0_sys>;
+	};
 };
 
-/* eMMC always enabled for eMMC boot boards */
+/* eMMC boot */
 &sdhci {
 	status = "okay";
 };
 
-/* SD card slot, enable when hardware is confirmed */
+/* SD slot: enable only after hardware confirmed */
 &sdmmc {
 	status = "disabled";
 };
 
-/* Remove EVB-specific ADC keys */
+/* Disable EVB-only peripherals from rk3588-evb.dtsi */
 &adc_keys {
 	status = "disabled";
 };
 
-/* Remove ES8388 audio codec (EVB-specific) */
 &es8388 {
 	status = "disabled";
 };
@@ -42,17 +62,79 @@
 	status = "disabled";
 };
 
-/* Remove IMX415 camera (EVB-specific) */
-&imx415 {
-	status = "disabled";
-};
-
-/* SARADC for ADC keys; keep enabled for thermal, etc. */
-&saradc {
+/*
+ * Discrete DCDC for big cores.
+ * RK8602 @ 0x42 -> VDD_CPU_BIG0
+ * RK8603 @ 0x43 -> VDD_CPU_BIG1
+ */
+&i2c0 {
 	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c0m2_xfer>;
+
+	vdd_cpu_big0_s0: vdd_cpu_big0_mem_s0: rk8602@42 {
+		compatible = "rockchip,rk8602";
+		reg = <0x42>;
+		vin-supply = <&vcc5v0_sys>;
+		regulator-compatible = "rk860x-reg";
+		regulator-name = "vdd_cpu_big0_s0";
+		regulator-min-microvolt = <550000>;
+		regulator-max-microvolt = <1050000>;
+		regulator-ramp-delay = <2300>;
+		rockchip,suspend-voltage-selector = <1>;
+		regulator-boot-on;
+		regulator-always-on;
+		regulator-state-mem {
+			regulator-off-in-suspend;
+		};
+	};
+
+	vdd_cpu_big1_s0: vdd_cpu_big1_mem_s0: rk8603@43 {
+		compatible = "rockchip,rk8603";
+		reg = <0x43>;
+		vin-supply = <&vcc5v0_sys>;
+		regulator-compatible = "rk860x-reg";
+		regulator-name = "vdd_cpu_big1_s0";
+		regulator-min-microvolt = <550000>;
+		regulator-max-microvolt = <1050000>;
+		regulator-ramp-delay = <2300>;
+		rockchip,suspend-voltage-selector = <1>;
+		regulator-boot-on;
+		regulator-always-on;
+		regulator-state-mem {
+			regulator-off-in-suspend;
+		};
+	};
 };
 
-/* HDMI0 output enabled by default */
+/*
+ * Discrete DCDC for NPU.
+ * RK8602 @ 0x42 -> VDD_NPU
+ */
+&i2c1 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c1m2_xfer>;
+
+	vdd_npu_s0: vdd_npu_mem_s0: rk8602@42 {
+		compatible = "rockchip,rk8602";
+		reg = <0x42>;
+		vin-supply = <&vcc5v0_sys>;
+		regulator-compatible = "rk860x-reg";
+		regulator-name = "vdd_npu_s0";
+		regulator-min-microvolt = <550000>;
+		regulator-max-microvolt = <950000>;
+		regulator-ramp-delay = <2300>;
+		rockchip,suspend-voltage-selector = <1>;
+		regulator-boot-on;
+		regulator-always-on;
+		regulator-state-mem {
+			regulator-off-in-suspend;
+		};
+	};
+};
+
+/* HDMI0 bring-up default; GPIO enable may need schematic confirm */
 &hdmi0 {
 	status = "okay";
 };
@@ -68,4 +150,8 @@
 &route_hdmi0 {
 	status = "okay";
 	connect = <&vp0_out_hdmi0>;
+};
+
+&saradc {
+	status = "okay";
 };
