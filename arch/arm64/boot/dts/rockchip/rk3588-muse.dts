@@ -37,6 +37,55 @@
 		regulator-max-microvolt = <1100000>;
 		vin-supply = <&vcc5v0_sys>;
 	};
+
+	/*
+	 * Board power rails referenced by Ethernet (per schematic):
+	 *   12V -> EC2232E DCDC -> 3.3V / 1.8V (no enable GPIO).
+	 */
+	vcc12v0_sys: vcc12v0-sys {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc12v0_sys";
+		regulator-always-on;
+		regulator-boot-on;
+		regulator-min-microvolt = <12000000>;
+		regulator-max-microvolt = <12000000>;
+	};
+
+	/* GMAC0/GMAC1 PHY 3.3V (VDD_3V3_MAIN) */
+	vcc_3v3_main: vcc-3v3-main {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_3v3_main"; /* VDD_3V3_MAIN */
+		regulator-always-on;
+		regulator-boot-on;
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		vin-supply = <&vcc12v0_sys>;
+	};
+
+	/* GMAC0 RGMII/MDIO IO domain (RK3588 VCCIO3) is 1.8V (VDD_1V8_ETH0).
+	 * rk3588 io-domain driver absent in this 5.10 kernel, so VCCIO3 is
+	 * hardware-strapped; this rail is documented only. */
+	vcc_1v8_eth0: vcc-1v8-eth0 {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_1v8_eth0"; /* VDD_1V8_ETH0 -> VCCIO3 */
+		regulator-always-on;
+		regulator-boot-on;
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		vin-supply = <&vcc12v0_sys>;
+	};
+
+	/* SD card main power (VDD_3V3_SOM_OUTPUT, 3.3V).
+	 * TODO: confirm source net and whether a load-switch enable GPIO exists. */
+	vcc_3v3_som_output: vcc-3v3-som-output {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_3v3_som_output"; /* VDD_3V3_SOM_OUTPUT */
+		regulator-always-on;
+		regulator-boot-on;
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		vin-supply = <&vcc_3v3_main>;
+	};
 };
 
 /* eMMC boot */
@@ -44,9 +93,18 @@
 	status = "okay";
 };
 
-/* SD slot: enable only after hardware confirmed */
+/* SD slot (MicroSD): fixed 3.3V IO, no UHS (VCCIO2 not switched to 1.8V).
+ * CD uses native SDMMC_DET (GPIO0_A4) via default pinctrl. */
 &sdmmc {
-	status = "disabled";
+	status = "okay";
+	bus-width = <4>;
+	cap-sd-highspeed;
+	no-1-8-v;
+	pinctrl-names = "default";
+	pinctrl-0 = <&sdmmc_clk &sdmmc_cmd &sdmmc_det &sdmmc_bus4>;
+	vmmc-supply = <&vcc_3v3_som_output>; /* VDD_3V3_SOM_OUTPUT */
+	vqmmc-supply = <&vcc_3v3_main>;       /* VCCIO2 fixed 3.3V */
+	/* TODO: add wp-gpios if the card slot has a write-protect pin */
 };
 
 /* Disable EVB-only nodes present in rk3588-evb.dtsi.
@@ -65,6 +123,7 @@
  */
 &i2c0 {
 	status = "okay";
+	clock-frequency = <100000>; /* FPGA (GW5A @0x51) + RK860x share this bus; 100kHz standard mode */
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c0m2_xfer>;
 
@@ -150,4 +209,88 @@
 
 &saradc {
 	status = "okay";
+};
+
+/*
+ * GMAC0 -> YT8531SH-CA (RGMII), PHY address 0 on mdio0.
+ * PHYAD0 is used as LED output; address 0 confirmed by HW.
+ * RESET: gpio3 RK_PB2 (ETH0_RSTn, active low).
+ * Clock: PHY has onboard 25MHz crystal, so it supplies the 125MHz
+ * reference clock to the SoC -> clock_in_out = "input".
+ */
+&gmac0 {
+	phy-mode = "rgmii-rxid"; /* RX delay provided by PHY; TX delay set below */
+	clock_in_out = "input"; /* driver selects external PHY clock via GRF/CRU */
+
+	/* RGMII IO is VCCIO3 1.8V */
+	snps,reset-gpio = <&gpio3 RK_PB2 GPIO_ACTIVE_LOW>;
+	snps,reset-active-low;
+	/* YT8531 reset low pulse; 20ms exceeds datasheet t_RST(min). Tune down if needed */
+	snps,reset-delays-us = <0 20000 100000>;
+
+	/* TODO: calibrate tx_delay on real board with iperf/ethtool */
+	tx_delay = <0x30>;
+
+	pinctrl-names = "default";
+	pinctrl-0 = <&gmac0_miim
+		     &gmac0_tx_bus2
+		     &gmac0_rx_bus2
+		     &gmac0_rgmii_clk
+		     &gmac0_rgmii_bus>;
+
+	phy-handle = <&eth0_phy>;
+	status = "okay";
+};
+
+&mdio0 {
+	eth0_phy: ethernet-phy@0 {
+		/* YT8531 matched by PHY ID 0x4f51e91b via motorcomm driver */
+		compatible = "ethernet-phy-ieee802.3-c22";
+		reg = <0x0>;
+		/* RGMII IO is 1.8V (VCCIO3) -> matches SoC side IO voltage */
+		motorcomm,vddio = "1v8";
+		/* YT8531: no TXDLY on chip; RXDLY enabled by pull-up on RXD0
+		 * (2ns @125MHz). So rgmii-rxid is correct: SoC adds TX delay via
+		 * tx_delay, PHY adds RX delay. Confirm VDDL (RGMII IO power) pin
+		 * = 1.8V to match motorcomm,vddio. tx_delay still needs calibration. */
+	};
+};
+
+/*
+ * GMAC1 -> YT8531SH-CA (RGMII), PHY address 1 on mdio1.
+ * RESET: gpio3 RK_PB6 (ETH1_RSTn, active low).
+ */
+&gmac1 {
+	phy-mode = "rgmii-rxid";
+	clock_in_out = "input";
+
+	/* RGMII IO is 3.3V domain */
+	snps,reset-gpio = <&gpio3 RK_PB6 GPIO_ACTIVE_LOW>;
+	snps,reset-active-low;
+	/* 20ms reset pulse exceeds YT8531 t_RST(min); tune down if needed */
+	snps,reset-delays-us = <0 20000 100000>;
+
+	tx_delay = <0x30>; /* TODO: calibrate on real board */
+
+	pinctrl-names = "default";
+	pinctrl-0 = <&gmac1_miim
+		     &gmac1_tx_bus2
+		     &gmac1_rx_bus2
+		     &gmac1_rgmii_clk
+		     &gmac1_rgmii_bus>;
+
+	phy-handle = <&eth1_phy>;
+	status = "okay";
+};
+
+&mdio1 {
+	eth1_phy: ethernet-phy@1 {
+		compatible = "ethernet-phy-ieee802.3-c22"; /* YT8531, PHY ID 0x4f51e91b */
+		reg = <0x1>;
+		motorcomm,vddio = "3v3"; /* RGMII IO is 3.3V */
+		/* YT8531: no TXDLY on chip; RXDLY enabled by pull-up on RXD0
+		 * (2ns @125MHz). rgmii-rxid correct: SoC adds TX delay.
+		 * Confirm VDDL (RGMII IO power) pin = 3.3V to match motorcomm,vddio.
+		 * tx_delay still needs on-board calibration. */
+	};
 };
