@@ -93,19 +93,38 @@
 		vin-supply = <&vcc_3v3_main>;
 	};
 
-	/* M.2 l2 modem 3.3V power, controlled by FULL_CARD_POWER_OFF#
-	 * GPIO0_C6 HIGH = power ON, LOW = power OFF */
+	/*
+	 * M.2 l2 modem 3.3V power (FULL_CARD_POWER_OFF#).
+	 *
+	 * Schematic: FULL_CARD_POWER_OFF# is a carrier-board signal that does
+	 * NOT route to any RK3588 SoC GPIO.  It is likely controlled by the
+	 * XL9555 I2C GPIO expander (U?? on carrier, I2C addr TBD) — one of the
+	 * unused expander ports (P01 / P06 / P07).  Until the XL9555 driver
+	 * and its DTS node are added, this rail is modelled as always-on.
+	 *
+	 * NOTE: GPIO0_C6 is KEYB_PWROFFn (power key), NOT this power control.
+	 *       Do not repurpose GPIO0_C6 here — it is claimed by gpio-keys.
+	 *
+	 * Modem power-cycling can still be achieved via:
+	 *   - PERST#  (GPIO4_A2, pcie2x1l2 reset-gpios)
+	 *   - 4G_5G_RSTn (GPIO0_B2, gpio-hog)
+	 */
 	vcc3v3_m2_l2: vcc3v3-m2-l2 {
 		compatible = "regulator-fixed";
 		regulator-name = "vcc3v3_m2_l2";
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
-		enable-gpios = <&gpio0 RK_PC6 GPIO_ACTIVE_HIGH>;
+		regulator-always-on;
 		regulator-boot-on;
 		vin-supply = <&vcc_3v3_main>;
 	};
 
-	/* Type-C0 VBUS 5V, controlled by USB_OTG_PWREN (GPIO1_B0) via WS4612 */
+	/*
+	 * Type-C0 VBUS 5V — controlled by USB_OTG_PWREN = GPIO1_B0.
+	 *
+	 * Hardware: WS4612 load-switch, GPIO1_B0 high = VBUS on.
+	 * Used by HUSB311 Type-C PD controller for VBUS source/sink switching.
+	 */
 	vbus5v0_typec: vbus5v0-typec {
 		compatible = "regulator-fixed";
 		regulator-name = "vbus5v0_typec";
@@ -116,7 +135,12 @@
 		vin-supply = <&vcc5v0_sys>;
 	};
 
-	/* USB2 Host0 VBUS 5V for SR9900 USB-Ethernet, controlled by ETH_PWRON (GPIO2_C4) */
+	/*
+	 * USB2 Host0 VBUS 5V — for SR9900AI USB-Ethernet.
+	 *
+	 * Hardware: ETH_PWRON = GPIO2_C4 (also DEVSLP), high = VBUS on.
+	 * Kept always-on since the SR9900AI draws power continuously.
+	 */
 	vbus5v0_host0: vbus5v0-host0 {
 		compatible = "regulator-fixed";
 		regulator-name = "vbus5v0_host0";
@@ -130,13 +154,41 @@
 	};
 };
 
-/* eMMC boot */
+/*
+ * eMMC boot device (on-board BGA eMMC, not socketed).
+ *
+ * Hardware (from core-board schematic):
+ *   - 8-bit data bus: EMMC_D0–D7
+ *   - EMMC_DS  (data strobe, HS400 mode)
+ *   - EMMC_RSTn (reset, driven by PMIC)
+ *   - EMMC_CMD, EMMC_CLKOUT
+ *   - VCC: 3.3V / 1.8V VQMMC (io-domain auto-switched by PMIC)
+ *
+ * Pinmux: handled by rk3588.dtsi &sdhci default pinctrl (no board override).
+ * The Rockchip DWMSHC driver auto-negotiates HS400ES / HS400 / HS200.
+ * No board-specific properties needed beyond status = "okay".
+ */
 &sdhci {
 	status = "okay";
 };
 
-/* SD slot (MicroSD): fixed 3.3V IO, no UHS (VCCIO2 not switched to 1.8V).
- * CD uses native SDMMC_DET (GPIO0_A4) via default pinctrl. */
+/*
+ * MicroSD card slot (carrier board).
+ *
+ * Hardware (from schematic):
+ *   - 4-bit data bus: SDMMC_D0–D3
+ *   - SDMMC_CMD, SDMMC_CLK
+ *   - Card detect: SDMMC_DET = GPIO0_A4 (native CD, active-low)
+ *   - VCC (vmmc):  VDD_3V3_SOM_OUTPUT (3.3V, always-on)
+ *   - VCCIO (vqmmc): VDD_3V3_MAIN (3.3V, fixed — no 1.8V signalling)
+ *
+ * Limitations:
+ *   - no-1-8-v: VCCIO2 is not switched to 1.8V, so UHS modes (SDR50/104)
+ *     are unavailable; max speed is SDR25 / HS @ 50 MHz.
+ *   - No write-protect pin on this slot.
+ *
+ * Pinmux: sdmmc_clk / sdmmc_cmd / sdmmc_det / sdmmc_bus4 (from SoC dtsi).
+ */
 &sdmmc {
 	status = "okay";
 	bus-width = <4>;
@@ -149,7 +201,11 @@
 	/* TODO: add wp-gpios if the card slot has a write-protect pin */
 };
 
-/* Disable EVB-only nodes present in rk3588-evb.dtsi.
+/*
+ * Disable EVB-only nodes inherited from rk3588-evb.dtsi.
+ * adc_keys: EVB uses SARADC for volume keys; our board uses a dedicated
+ * recovery-key node instead (see below).
+ *
  * Note: es8388 / es8388_sound live in board-specific EVB dtsi
  * (e.g. rk3588-evb1-lp4.dtsi), not in rk3588-evb.dtsi, so do not
  * reference those labels here.
@@ -159,9 +215,19 @@
 };
 
 /*
- * Discrete DCDC for big cores.
- * RK8602 @ 0x42 -> VDD_CPU_BIG0
- * RK8603 @ 0x43 -> VDD_CPU_BIG1
+ * I2C0 — CPU/NPU core-voltage regulators (M2 mux).
+ *
+ * Bus topology (from core-board schematic):
+ *   I2C0_SCL_M2 / I2C0_SDA_M2  →  three discrete DCDC regulators:
+ *     U2200 = RK860-2  @ 0x42  →  VDD_CPU_BIG0  (550 mV – 1.05 V)
+ *     U2201 = RK860-3  @ 0x43  →  VDD_CPU_BIG1  (550 mV – 1.05 V)
+ *     U2202 = RK860-2  @ 0x42  →  VDD_NPU       (550 mV – 0.95 V)
+ *   (U2202 is on a separate I2C1 bus — see &i2c1 below.)
+ *
+ * Also on this bus: GW5A FPGA @ 0x51 ( PCIe endpoint).
+ * Clock: 100 kHz standard mode (FPGA + regulators share the bus).
+ *
+ * Pinmux: i2c0m2_xfer (M2 mux: SCL=GPIO0_B5, SDA=GPIO0_B6).
  */
 &i2c0 {
 	status = "okay";
@@ -205,8 +271,14 @@
 };
 
 /*
- * Discrete DCDC for NPU.
- * RK8602 @ 0x42 -> VDD_NPU
+ * I2C1 — NPU core-voltage regulator (M2 mux).
+ *
+ * Bus topology (from core-board schematic):
+ *   I2C1_SCL_M2 / I2C1_SDA_M2  →  one discrete DCDC regulator:
+ *     U2202 = RK860-2  @ 0x42  →  VDD_NPU  (550 mV – 0.95 V)
+ *
+ * Pinmux: i2c1m2_xfer (M2 mux: SCL=GPIO0_B7, SDA=GPIO0_C0).
+ * Clock: 100 kHz (default).
  */
 &i2c1 {
 	status = "okay";
@@ -232,10 +304,14 @@
 };
 
 /*
- * GPIO LEDs (D1/D2 on carrier board):
- * LED1 = GPIO0_C5, heartbeat trigger
- * LED2 = GPIO0_D3, default-on
- * Overrides evb leds node (which uses GPIO3_B7).
+ * GPIO LEDs (D1 / D2 on carrier board).
+ *
+ * Hardware (from core-board schematic):
+ *   - D1 (LED1) = GPIO0_C5  →  green, heartbeat trigger
+ *   - D2 (LED2) = GPIO0_D3  →  green, default-on (power indicator)
+ *   - Both active-high (GPIO high → LED on)
+ *
+ * Overrides the EVB &leds node (which uses GPIO3_B7).
  */
 &leds {
 	work_led: work {
@@ -250,8 +326,17 @@
 };
 
 /*
- * GPIO power key: KEYB_PWROFFn = GPIO0_C6, active-low.
- * Generates KEY_POWER event for system power-off / suspend.
+ * GPIO power key: KEYB_PWROFFn = GPIO0_C6 (active-low, pull-up).
+ *
+ * Hardware (from core-board schematic):
+ *   - KEYB_PWROFFn is a momentary push-button on the carrier board
+ *   - Pressed  → GPIO0_C6 pulled to GND → logic 0
+ *   - Released → GPIO0_C6 pulled to VDD_1V8 → logic 1
+ *   - Generates KEY_POWER event for systemd / init to handle
+ *     power-off and suspend-to-RAM.
+ *
+ * NOTE: GPIO0_C6 is NOT the M.2 modem power control (FULL_CARD_POWER_OFF#).
+ *       That signal lives on the carrier XL9555 I2C expander.
  */
 / {
 	gpio-keys {
@@ -269,10 +354,18 @@
 };
 
 /*
- * HDMI0 output: direct VP0 → HDMI0.
- * Pinctrl (CEC/HPD/SCL/SDA on M0 mux) already set in rk3588s.dtsi.
- * Schematic: HDMI_TX0_SCL_M0=GPIO4_B7, SDA_M0=GPIO4_C0,
- * HPD_M0=GPIO1_A5, CEC_M0=GPIO4_C1 (also HDMI0_TX_ON_H).
+ * HDMI0 output: VOP0 (VP0) → HDMI0 TX → HDMI connector.
+ *
+ * Hardware (from carrier-board schematic, all M0 mux):
+ *   - HDMI_TX0_SCL_M0  = GPIO4_B7  (DDC I2C clock)
+ *   - HDMI_TX0_SDA_M0  = GPIO4_C0  (DDC I2C data)
+ *   - HDMI_TX0_HPD_M0  = GPIO1_A5  (hot-plug detect)
+ *   - HDMI_TX0_CEC_M0  = GPIO4_C1  (CEC, also HDMI0_TX_ON_H)
+ *   - Differential pairs: TX0P/N – TX3P/N (4 lanes)
+ *
+ * Pinmux: handled by rk3588s.dtsi (M0 mux, no board override needed).
+ * PHY: &hdptxphy_hdmi0 (on-chip HDMI PHY, enabled below).
+ * Route: VP0 → HDMI0 (no intermediate split).
  */
 &hdmi0 {
 	status = "okay";
@@ -292,23 +385,35 @@
 };
 
 /*
- * SAR ADC (8 channels, 12-bit, 1.8V reference from RK806 PLDO_REG2).
+ * SAR ADC — 8-channel, 12-bit, 1.8 V reference (from RK806 PLDO_REG2).
  *
- * IN0: SARADC_IN0_BOOT  - boot mode selection (read by bootloader)
- * IN1: SARADC_IN1       - RECOVERY_KEY (adc-keys, pressed≈0V, released≈1.8V)
- * IN2: SARADC_IN2       - reserved (routed to connector)
- * IN3: SARADC_IN3       - reserved (routed to connector)
- * IN4: SARADC_IN4       - reserved (routed to connector)
- * IN5: SARADC_VIN5      - HW_ID (hardware revision identification)
+ * Channel mapping (from core-board schematic):
+ *   IN0: SARADC_IN0_BOOT  — boot mode selection (read by bootloader)
+ *   IN1: SARADC_IN1       — RECOVERY_KEY (adc-keys: pressed≈0 V, released≈1.8 V)
+ *   IN2: SARADC_IN2       — reserved (routed to connector)
+ *   IN3: SARADC_IN3       — reserved (routed to connector)
+ *   IN4: SARADC_IN4       — reserved (routed to connector)
+ *   IN5: SARADC_VIN5      — HW_ID (hardware revision identification, IIO sysfs)
+ *
+ * The recovery key on IN1 is configured as an adc-keys node below.
+ * HW_ID on IN5 is read from user space via IIO sysfs — no DTS node needed.
  */
 &saradc {
 	status = "okay";
 	vref-supply = <&vcc_1v8_s0>;
 };
 
-/* Recovery key on SARADC channel 1.
- * Pressed: ~0V, Released: ~1.8V (pull-up to vref).
- * Generates KEY_VOLUMEDOWN for Android recovery boot trigger. */
+/*
+ * Recovery key on SARADC channel 1 (SARADC_IN1).
+ *
+ * Hardware: momentary push-button (KEY1) on carrier board.
+ *   - Pressed:  ADC reads ≈ 0 V (button shorts to GND)
+ *   - Released: ADC reads ≈ 1.8 V (pull-up to vref)
+ *   - Threshold: < 100 mV = pressed
+ *
+ * Generates KEY_VOLUMEDOWN for Android recovery boot trigger.
+ * (In pure Linux without a recovery daemon, this node can be removed.)
+ */
 / {
 	recovery-keys {
 		compatible = "adc-keys";
@@ -326,11 +431,23 @@
 };
 
 /*
- * GMAC0 -> YT8531SH-CA (RGMII), PHY address 0 on mdio0.
- * PHYAD0 is used as LED output; address 0 confirmed by HW.
- * RESET: gpio3 RK_PB2 (ETH0_RSTn, active low).
- * Clock: PHY has onboard 25MHz crystal, so it supplies the 125MHz
- * reference clock to the SoC -> clock_in_out = "input".
+ * GMAC0 → YT8531SH-CA (R137) RGMII PHY, MDIO address 0.
+ *
+ * Hardware (from carrier-board schematic):
+ *   - RGMII: TX_CLK/RX_CLK, TXD0–3, RXD0–3, TX_CTL, RX_CTL
+ *   - MDIO:  MDC, MDIO  (mdio0 bus)
+ *   - RESET: ETH0_RSTn = GPIO3_B2 (active-low)
+ *   - Clock: PHY has onboard 25 MHz crystal → supplies 125 MHz ref clk
+ *            to SoC  ⇒  clock_in_out = "input"
+ *   - IO voltage: VCCIO3 = 1.8 V (VDD_1V8_ETH0)
+ *   - PHY address: 0 (PHYAD0 pin reused as LED0 output)
+ *
+ * PHY driver: motorcomm (YT8531), matched by PHY ID 0x4f51e91b.
+ * RGMII delay: PHY provides RX delay (2 ns via pull-up on RXD0);
+ *              SoC provides TX delay via tx_delay register.
+ *              ⇒ phy-mode = "rgmii-rxid".
+ *
+ * TODO: calibrate tx_delay on real hardware with iperf / ethtool.
  */
 &gmac0 {
 	phy-mode = "rgmii-rxid"; /* RX delay provided by PHY; TX delay set below */
@@ -371,8 +488,21 @@
 };
 
 /*
- * GMAC1 -> YT8531SH-CA (RGMII), PHY address 1 on mdio1.
- * RESET: gpio3 RK_PB6 (ETH1_RSTn, active low).
+ * GMAC1 → YT8531SH-CA (R138) RGMII PHY, MDIO address 1.
+ *
+ * Hardware (from carrier-board schematic):
+ *   - RGMII: TX_CLK/RX_CLK, TXD0–3, RXD0–3, TX_CTL, RX_CTL
+ *   - MDIO:  MDC, MDIO  (mdio1 bus)
+ *   - RESET: ETH1_RSTn = GPIO3_B6 (active-low)
+ *   - Clock: PHY has onboard 25 MHz crystal → supplies 125 MHz ref clk
+ *            to SoC  ⇒  clock_in_out = "input"
+ *   - IO voltage: 3.3 V domain
+ *   - PHY address: 1 (PHYAD0 pin strapped high)
+ *
+ * PHY driver: motorcomm (YT8531), matched by PHY ID 0x4f51e91b.
+ * RGMII delay: same scheme as GMAC0 — PHY RX delay, SoC TX delay.
+ *
+ * TODO: calibrate tx_delay on real hardware with iperf / ethtool.
  */
 &gmac1 {
 	phy-mode = "rgmii-rxid";
@@ -410,16 +540,18 @@
 };
 
 /*
- * PCIe 3.0 x4 -> FPGA
+ * PCIe 3.0 x4 (pcie3x4) → GW5A FPGA endpoint.
  *
- * Reference clock: external RS2CG5705BLE clock buffer, always-on.
- *   - Output 1: PCIE30_PORT0_REF_CLKP/N -> RK3588 PCIe3x4 ref clk
- *   - Output 2: PCIE30_PORT1_REF_CLKP/N -> RK3588 (unused port)
- *   - Output 3: Q0_REFCLKP/N            -> FPGA ref clk
+ * Hardware (from core-board schematic):
+ *   - Reference clock: external RS2CG5705BLE clock buffer (always-on)
+ *     Output 1: PCIE30_PORT0_REF_CLKP/N → RK3588 PCIe3x4 ref clk
+ *     Output 2: PCIE30_PORT1_REF_CLKP/N → RK3588 (unused port)
+ *     Output 3: Q0_REFCLKP/N            → FPGA ref clk
+ *   - FPGA PERST# is not connected to any RK3588 GPIO (no reset-gpios)
+ *   - PCIe 3.3V power: fixed/always-on (no vpcie3v3-supply)
+ *   - CLKREQ# not used (external clock chip runs independently)
  *
- * FPGA PERST# is not connected to RK3588 (no reset-gpios).
- * PCIe 3.3V power is fixed/always-on (no vpcie3v3-supply).
- * clkreqn is not used (external clock chip runs independently).
+ * PHY: pcie30phy in aggregation mode (x4).
  */
 &pcie30phy {
 	rockchip,pcie30-phymode = <PHY_MODE_PCIE_AGGREGATION>;
@@ -431,23 +563,29 @@
 };
 
 /*
- * PCIe 2.0 x1 lanes
+ * PCIe 2.0 x1 lanes + SATA.
  *
- * l0: PCIe 2.1 interface, ext clk PI6C557-05BLE (feeds SoC + CON),
- *     reset via NPOR_u (PMUIO power-on reset, no GPIO)
- *     SMBus (SMCLK/SMDAT) on connector wired to I2C2 (SCL/SDA M0),
- *     not used by PCIe driver, enable I2C2 separately if needed.
- * l1: M.2 B-key SATA SSD (combphy2_psu in SATA mode, not PCIe)
- * l2: M.2 B-key 4G/5G modem (RM500Q-GL), PCIe mode,
- *     SoC internal clk, reset GPIO4_PA2 (A/AM29, pcie30x1_1_perstn_m1),
- *     CLKREQ#/WAKE# not connected,
- *     power controlled by GPIO0_C6 (FULL_CARD_POWER_OFF#).
- *     Modem-specific: RESET# GPIO0_B2 (1.8V).
+ * l0 (pcie2x1l0): PCIe 2.1 interface.
+ *   - External ref clock: PI6C557-05BLE (feeds both SoC and connector)
+ *   - Reset: NPOR_u (PMUIO power-on reset, auto-release — no GPIO)
+ *   - SMBus (SMCLK/SMDAT) on connector wired to I2C2 (not used by PCIe)
+ *   - combphy1_ps in PCIe mode with ext-refclk
+ *   - Power: always-on
  *
- * l0/l2 power: l0 always-on, l2 GPIO-controlled (vcc3v3_m2_l2).
- * l0 uses external refclk (rockchip,ext-refclk); l2 uses SoC internal clk.
+ * l1 (pcie2x1l1): NOT used as PCIe — repurposed as SATA.
+ *   - M.2 B-key SATA SSD via combphy2_psu in SATA mode → &sata2
+ *
+ * l2 (pcie2x1l2): M.2 B-key 4G/5G modem (RM500Q-GL).
+ *   - PCIe mode (MHI over PCIe), SoC internal clock
+ *   - Reset: GPIO4_A2 (A/AM29, PCIE30X1_1_PERSTN_M1, active-high)
+ *   - CLKREQ# / WAKE# not connected
+ *   - Power: FULL_CARD_POWER_OFF# (carrier XL9555 expander — always-on
+ *     for now, see vcc3v3_m2_l2 regulator above)
+ *   - Modem RESET#: GPIO0_B2 (4G_5G_RSTn, 1.8V, gpio-hog output-high)
+ *   - combphy0_ps in PCIe mode
  */
 
+/* combphy1_ps: PCIe mode with external refclk for pcie2x1l0 */
 &combphy1_ps {
 	rockchip,ext-refclk;
 	status = "okay";
@@ -457,6 +595,7 @@
 	status = "okay";
 };
 
+/* combphy2_psu: SATA mode for M.2 B-key SATA SSD (replaces pcie2x1l1) */
 &combphy2_psu {
 	status = "okay";
 };
@@ -465,17 +604,28 @@
 	status = "okay";
 };
 
+/* combphy0_ps: PCIe mode for pcie2x1l2 (M.2 4G/5G modem) */
 &combphy0_ps {
 	status = "okay";
 };
 
+/*
+ * pcie2x1l2: M.2 B-key 4G/5G modem (RM500Q-GL).
+ * Reset: GPIO4_A2 (PCIE30X1_1_PERSTN_M1, active-high in Rockchip convention).
+ * Power: vcc3v3_m2_l2 (always-on until XL9555 expander driver is added).
+ */
 &pcie2x1l2 {
 	reset-gpios = <&gpio4 RK_PA2 GPIO_ACTIVE_HIGH>;
 	vpcie3v3-supply = <&vcc3v3_m2_l2>;
 	status = "okay";
 };
 
-/* Modem control GPIOs (RM500Q-GL on l2) */
+/*
+ * Modem control GPIO (RM500Q-GL on PCIe l2):
+ *   4G_5G_RSTn = GPIO0_B2 (1.8V, active-high in Rockchip convention).
+ *   Hogged high at boot to keep the modem out of reset.
+ *   (Toggle low→high to force a modem cold reset if needed.)
+ */
 &gpio0 {
 	4g-5g-rstn-hog {
 		gpio-hog;
@@ -486,9 +636,15 @@
 };
 
 /*
- * USB3_0 OTG (Type-C0): USB3.1 OTG + DP 1.4a
- * HUSB311 Type-C controller on I2C2, VBUS via WS4612 (GPIO1_B0).
- * DP0 altmode: SBU1→AUXP, SBU2→AUXN, orientation DC on GPIO3_B7/GPIO3_D1.
+ * I2C2 — Type-C0 controller + DS1307 RTC (M0 mux).
+ *
+ * Bus topology (from carrier-board schematic):
+ *   I2C2_SCL_M0 / I2C2_SDA_M0  →  two devices:
+ *     C270 = HUSB311  @ 0x4e  (Type-C PD + orientation controller)
+ *     Q32  = DS1307   @ 0x68  (external RTC, 32.768 kHz crystal + backup battery)
+ *
+ * Pinmux: i2c2m0_xfer (M0 mux: SCL=GPIO3_A0, SDA=GPIO3_A1).
+ * Clock: 400 kHz fast mode.
  */
 &i2c2 {
 	status = "okay";
@@ -496,6 +652,17 @@
 	pinctrl-0 = <&i2c2m0_xfer>;
 	clock-frequency = <400000>;
 
+	/*
+	 * HUSB311 Type-C PD controller (C270) @ 0x4e.
+	 *
+	 * Hardware:
+	 *   - INT pin = GPIO4_B6 (active-low, pull-up)
+	 *   - VBUS 5V via WS4612 load-switch, enabled by USB_OTG_PWREN = GPIO1_B0
+	 *   - DP0 alt-mode: SBU1→AUXP, SBU2→AUXN
+	 *   - Orientation: DC pins GPIO3_B7 (sbu1) / GPIO3_D1 (sbu2)
+	 *
+	 * Driver: hynetek,husb311 (Type-C + DP alt-mode mux).
+	 */
 	usbc0: husb311@4e {
 		compatible = "hynetek,husb311";
 		reg = <0x4e>;
@@ -560,8 +727,18 @@
 		};
 	};
 
-	/* DS1307 RTC (U24) at 0x68, shares I2C2 with HUSB311.
-	 * 32.768kHz crystal + 3V backup battery (CON11).
+	/*
+	 * DS1307 RTC (Q32) @ 0x68 — external I2C real-time clock.
+	 *
+	 * Hardware (from carrier-board schematic):
+	 *   - 32.768 kHz crystal (Y?) on X1/X2 pins
+	 *   - 3 V backup battery (CON11) on VBAT pin
+	 *   - SQW/OUT pin unused
+	 *   - Shares I2C2 M0 bus with HUSB311
+	 *
+	 * Driver: rtc-ds1307 (dallas,ds1307 compatible).
+	 * The SoC internal RK806 RTC also exists; this external RTC provides
+	 * time-keeping across power loss when main power is removed.
 	 */
 	rtc@68 {
 		compatible = "dallas,ds1307";
@@ -578,6 +755,16 @@
 	status = "okay";
 };
 
+/*
+ * USB3.0 + DP0 combo PHY (usbdp_phy0) for Type-C0.
+ *
+ * Hardware:
+ *   - Orientation switch enabled (Type-C can be flipped)
+ *   - SBU1 DC pin = GPIO3_B7, SBU2 DC pin = GPIO3_D1
+ *     (used by HUSB311 to signal cable orientation)
+ *   - SVID 0xff01 = DisplayPort alt-mode
+ *   - SuperSpeed lanes shared between USB3.0 and DP0
+ */
 &usbdp_phy0 {
 	orientation-switch;
 	svid = <0xff01>;
@@ -612,6 +799,12 @@
 	status = "okay";
 };
 
+/*
+ * USB3.0 DRD controller 0 (dwc3_0) — Type-C0 OTG.
+ *
+ * Mode: OTG (dual-role: Host or Device, switched by HUSB311 CC logic).
+ * USB role switch wired to HUSB311 Type-C controller via endpoint.
+ */
 &usbdrd_dwc3_0 {
 	dr_mode = "otg";
 	usb-role-switch;
@@ -626,6 +819,12 @@
 	};
 };
 
+/*
+ * DisplayPort 0 (DP0) — alt-mode on Type-C0 USB3.0.
+ *
+ * Routed through usbdp_phy0; enabled when HUSB311 negotiates DP alt-mode.
+ * Source: VOP0 (VP0) → DP0.
+ */
 &dp0 {
 	status = "okay";
 };
@@ -635,8 +834,16 @@
 };
 
 /*
- * USB3_1 Host (Type-C1): USB3.1 Host only, no CC chip.
- * VBUS always on (WS4612 EN tied to GND).
+ * USB3_1 Host (Type-C1): USB 3.1 Host-only port.
+ *
+ * Hardware (from carrier-board schematic):
+ *   - No Type-C CC controller (pure Host, no PD negotiation)
+ *   - VBUS 5V always-on (WS4612 EN tied to GND → permanently enabled)
+ *   - USB3.1 SuperSpeed lanes + USB2 D+/D−
+ *   - Reset via NPOR_u (PMU power-on reset, auto-release — no GPIO)
+ *
+ * Controller: usbdrd3_1 / usbdrd_dwc3_1 in Host mode.
+ * PHY: u2phy1 + usbdp_phy1 (no orientation switch needed — Host only).
  */
 &u2phy1 {
 	status = "okay";
@@ -658,14 +865,29 @@
 	status = "okay";
 };
 
+/*
+ * USB3.1 DRD controller 1 (dwc3_1) — Type-C1 Host-only.
+ *
+ * Mode: Host (no OTG — no CC controller on this port).
+ */
 &usbdrd_dwc3_1 {
 	dr_mode = "host";
 	status = "okay";
 };
 
 /*
- * USB2 Host0: connected to SR9900AI USB-to-Ethernet (ETH2).
- * VBUS controlled by ETH_PWRON (GPIO2_C4).
+ * USB2 Host0: SR9900AI USB-to-Ethernet adapter (ETH2).
+ *
+ * Hardware (from carrier-board schematic):
+ *   - SR9900AI is a USB 2.0 → 10/100 Ethernet chip (C??)
+ *   - VBUS 5V controlled by ETH_PWRON = GPIO2_C4 (also DEVSLP)
+ *   - USB2 D+/D− only (no SuperSpeed)
+ *
+ * The SR9900AI is a standard USB Ethernet device; it auto-enumerates
+ * once the USB host controller is active.  No board-specific DTS node
+ * is needed for the device itself — only the host controller + PHY.
+ * VBUS is kept always-on (regulator-always-on) since the SR9900AI
+ * draws power continuously.
  */
 &u2phy2 {
 	status = "okay";
@@ -684,8 +906,17 @@
 };
 
 /*
- * USB2 Host1: connected to CH334H 4-port USB hub.
- * Reset via NPOR_u (auto-release), VBUS always-on.
+ * USB2 Host1: CH334H 4-port USB 2.0 hub (C276).
+ *
+ * Hardware (from carrier-board schematic):
+ *   - CH334H is a 4-port USB 2.0 hub controller
+ *   - VBUS 5V always-on (no enable GPIO)
+ *   - Reset via NPOR_u (PMU power-on reset, auto-release — no GPIO)
+ *   - USB2 D+/D− upstream port to SoC, 4× downstream D+/D−
+ *
+ * The CH334H is a standard USB hub; it auto-enumerates once the host
+ * controller is active.  No board-specific DTS node needed for the hub
+ * itself — only the host controller + PHY.
  */
 &u2phy3 {
 	status = "okay";
@@ -703,7 +934,17 @@
 	status = "okay";
 };
 
-/* SoC watchdog timer (DW WDT at 0xfeaf0000) */
+/*
+ * SoC internal watchdog timer (Synopsys DW WDT at 0xfeaf0000).
+ *
+ * This is the RK3588 on-chip watchdog.  When it times out, it triggers
+ * a SoC-level reset (equivalent to a warm reboot).  The timeout period
+ * is configured by the driver (default 16 s in most Rockchip BSPs).
+ *
+ * Coexists with the external SGM820B watchdog below — the internal WDT
+ * catches software hangs, while the external one provides an independent
+ * hardware safety net that resets the entire board.
+ */
 &wdt {
 	status = "okay";
 };
@@ -729,7 +970,15 @@
 	};
 };
 
-/* Type-C0 HUSB311 interrupt pin: GPIO4_B6, active-low, pull-up */
+/*
+ * Board-specific pinctrl overrides.
+ *
+ * USB Type-C0:
+ *   usbc0_int: HUSB311 interrupt pin = GPIO4_B6, active-low, pull-up.
+ *
+ * GPIO power key:
+ *   power_key_pin: KEYB_PWROFFn = GPIO0_C6, pull-up (active-low button).
+ */
 &pinctrl {
 	usb-typec {
 		usbc0_int: usbc0-int {
