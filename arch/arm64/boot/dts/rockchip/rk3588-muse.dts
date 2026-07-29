@@ -708,6 +708,27 @@
 	status = "okay";
 };
 
+/*
+ * External hardware watchdog on carrier board: SGM820B-3.0 (U55).
+ *   WDI  -> GPIO3_A6 (CPU kick signal, toggle algorithm)
+ *   SET  -> VCC      (timeout ≈ 3.0 s)
+ *   CWD  -> GND      (watchdog always enabled, cannot be disabled)
+ *   WDO  -> system reset
+ * The SoC internal &wdt above and this external watchdog coexist:
+ * the internal one triggers a SoC-level reset, while the SGM820B is an
+ * independent hardware safety mechanism that resets the whole board.
+ * Requires CONFIG_GPIO_WATCHDOG=y in defconfig.
+ */
+/ {
+	ext_wdt: watchdog-gpio {
+		compatible = "linux,wdt-gpio";
+		gpios = <&gpio3 RK_PA6 GPIO_ACTIVE_HIGH>;
+		hw_algo = "toggle";
+		hw_margin_ms = <3000>;
+		always-running;
+	};
+};
+
 /* Type-C0 HUSB311 interrupt pin: GPIO4_B6, active-low, pull-up */
 &pinctrl {
 	usb-typec {
