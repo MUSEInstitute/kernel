@@ -96,16 +96,23 @@
 	/*
 	 * M.2 l2 modem 3.3V power (FULL_CARD_POWER_OFF#).
 	 *
-	 * Schematic: FULL_CARD_POWER_OFF# is a carrier-board signal that does
-	 * NOT route to any RK3588 SoC GPIO.  It is likely controlled by the
-	 * XL9555 I2C GPIO expander (U?? on carrier, I2C addr TBD) — one of the
-	 * unused expander ports (P01 / P06 / P07).  Until the XL9555 driver
-	 * and its DTS node are added, this rail is modelled as always-on.
+	 * Schematic: GPIO0_C6 (KEYB_PWROFFn) is a SoC output (1.8V) that
+	 * goes through a level shifter (Q21, CJ3400 NPN) on the carrier
+	 * board to become a 3.3V signal, which then drives the
+	 * FULL_CARD_POWER_OFF# pin on the M.2 connector (CON4).
 	 *
-	 * NOTE: GPIO0_C6 is KEYB_PWROFFn (power key), NOT this power control.
-	 *       Do not repurpose GPIO0_C6 here — it is claimed by gpio-keys.
+	 * Signal path:
+	 *   GPIO0_C6 (1.8V) → Q21 level shifter → FULL_CARD_POWER_OFF# (3.3V)
 	 *
-	 * Modem power-cycling can still be achieved via:
+	 * Polarity: GPIO_ACTIVE_HIGH
+	 *   - GPIO0_C6 = HIGH → FULL_CARD_POWER_OFF# = HIGH → modem power ON
+	 *   - GPIO0_C6 = LOW  → FULL_CARD_POWER_OFF# = LOW  → modem power OFF
+	 *
+	 * NOTE: Despite the signal name "KEYB_PWROFFn", GPIO0_C6 is NOT a
+	 *       power key. The actual power button is PMIC_PWRONN, which is
+	 *       handled by the Rockchip PMIC driver (rk8xx) internally.
+	 *
+	 * Modem reset is separately controlled via:
 	 *   - PERST#  (GPIO4_A2, pcie2x1l2 reset-gpios)
 	 *   - 4G_5G_RSTn (GPIO0_B2, gpio-hog)
 	 */
@@ -114,7 +121,7 @@
 		regulator-name = "vcc3v3_m2_l2";
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
-		regulator-always-on;
+		enable-gpios = <&gpio0 RK_PC6 GPIO_ACTIVE_HIGH>;
 		regulator-boot-on;
 		vin-supply = <&vcc_3v3_main>;
 	};
@@ -322,34 +329,6 @@
 	user_led: user {
 		gpios = <&gpio0 RK_PD3 GPIO_ACTIVE_HIGH>;
 		default-state = "on";
-	};
-};
-
-/*
- * GPIO power key: KEYB_PWROFFn = GPIO0_C6 (active-low, pull-up).
- *
- * Hardware (from core-board schematic):
- *   - KEYB_PWROFFn is a momentary push-button on the carrier board
- *   - Pressed  → GPIO0_C6 pulled to GND → logic 0
- *   - Released → GPIO0_C6 pulled to VDD_1V8 → logic 1
- *   - Generates KEY_POWER event for systemd / init to handle
- *     power-off and suspend-to-RAM.
- *
- * NOTE: GPIO0_C6 is NOT the M.2 modem power control (FULL_CARD_POWER_OFF#).
- *       That signal lives on the carrier XL9555 I2C expander.
- */
-/ {
-	gpio-keys {
-		compatible = "gpio-keys";
-
-		power {
-			label = "power";
-			gpios = <&gpio0 RK_PC6 GPIO_ACTIVE_LOW>;
-			linux,code = <KEY_POWER>;
-			debounce-interval = <100>;
-			pinctrl-names = "default";
-			pinctrl-0 = <&power_key_pin>;
-		};
 	};
 };
 
@@ -579,8 +558,8 @@
  *   - PCIe mode (MHI over PCIe), SoC internal clock
  *   - Reset: GPIO4_A2 (A/AM29, PCIE30X1_1_PERSTN_M1, active-high)
  *   - CLKREQ# / WAKE# not connected
- *   - Power: FULL_CARD_POWER_OFF# (carrier XL9555 expander — always-on
- *     for now, see vcc3v3_m2_l2 regulator above)
+ *   - Power: FULL_CARD_POWER_OFF# controlled by GPIO0_C6 (KEYB_PWROFFn)
+ *     via Q21 level shifter, see vcc3v3_m2_l2 regulator above
  *   - Modem RESET#: GPIO0_B2 (4G_5G_RSTn, 1.8V, gpio-hog output-high)
  *   - combphy0_ps in PCIe mode
  */
@@ -612,7 +591,7 @@
 /*
  * pcie2x1l2: M.2 B-key 4G/5G modem (RM500Q-GL).
  * Reset: GPIO4_A2 (PCIE30X1_1_PERSTN_M1, active-high in Rockchip convention).
- * Power: vcc3v3_m2_l2 (always-on until XL9555 expander driver is added).
+ * Power: vcc3v3_m2_l2 (GPIO0_C6 → level shifter → FULL_CARD_POWER_OFF#).
  */
 &pcie2x1l2 {
 	reset-gpios = <&gpio4 RK_PA2 GPIO_ACTIVE_HIGH>;
@@ -976,8 +955,11 @@
  * USB Type-C0:
  *   usbc0_int: HUSB311 interrupt pin = GPIO4_B6, active-low, pull-up.
  *
- * GPIO power key:
- *   power_key_pin: KEYB_PWROFFn = GPIO0_C6, pull-up (active-low button).
+ * M.2 modem power enable:
+ *   m2_l2_pwren: GPIO0_C6 (KEYB_PWROFFn) → level shifter → FULL_CARD_POWER_OFF#.
+ *   Configured as GPIO output, no pull (driven by regulator-fixed driver).
+ *
+ * NOTE: The board power button is PMIC_PWRONN (PMIC internal, no GPIO needed).
  */
 &pinctrl {
 	usb-typec {
@@ -986,9 +968,9 @@
 		};
 	};
 
-	gpio-keys {
-		power_key_pin: power-key-pin {
-			rockchip,pins = <0 RK_PC6 RK_FUNC_GPIO &pcfg_pull_up>;
+	gpio-misc {
+		m2_l2_pwren: m2-l2-pwren {
+			rockchip,pins = <0 RK_PC6 RK_FUNC_GPIO &pcfg_output_high>;
 		};
 	};
 };
