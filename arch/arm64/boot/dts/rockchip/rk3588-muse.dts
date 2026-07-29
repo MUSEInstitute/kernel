@@ -247,12 +247,37 @@
 };
 
 /*
- * SAR ADC (4 channels, 1.8V reference from RK806 PLDO_REG2).
- * Channels available for board use (ADC keys, jack detect, etc.).
+ * SAR ADC (8 channels, 12-bit, 1.8V reference from RK806 PLDO_REG2).
+ *
+ * IN0: SARADC_IN0_BOOT  - boot mode selection (read by bootloader)
+ * IN1: SARADC_IN1       - RECOVERY_KEY (adc-keys, pressed≈0V, released≈1.8V)
+ * IN2: SARADC_IN2       - reserved (routed to connector)
+ * IN3: SARADC_IN3       - reserved (routed to connector)
+ * IN4: SARADC_IN4       - reserved (routed to connector)
+ * IN5: SARADC_VIN5      - HW_ID (hardware revision identification)
  */
 &saradc {
 	status = "okay";
 	vref-supply = <&vcc_1v8_s0>;
+};
+
+/* Recovery key on SARADC channel 1.
+ * Pressed: ~0V, Released: ~1.8V (pull-up to vref).
+ * Generates KEY_VOLUMEDOWN for Android recovery boot trigger. */
+/ {
+	recovery-keys {
+		compatible = "adc-keys";
+		io-channels = <&saradc 1>;
+		io-channel-names = "buttons";
+		keyup-threshold-microvolt = <1800000>;
+		poll-interval = <100>;
+
+		recovery-key {
+			label = "recovery";
+			linux,code = <KEY_VOLUMEDOWN>;
+			press-threshold-microvolt = <100000>;
+		};
+	};
 };
 
 /*
