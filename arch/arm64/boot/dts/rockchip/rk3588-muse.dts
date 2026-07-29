@@ -23,6 +23,12 @@
 #include "rk3588-rk806-single.dtsi"
 #include "rk3588-linux.dtsi"
 
+/*
+ * UART2 debug console: already enabled in rk3588-linux.dtsi.
+ * Pinctrl: uart2m0_xfer (M0 mux) — matches schematic UART2_TX/RX_M0.
+ * Console: earlycon=uart8250,mmio32,0xfeb50000, FIQ debugger at 1.5Mbaud.
+ */
+
 / {
 	model = "MUSE RK3588 Board";
 	compatible = "muse,rk3588-muse", "rockchip,rk3588";
@@ -226,8 +232,47 @@
 };
 
 /*
- * HDMI0 output: bring-up default, direct VP0 → HDMI0.
- * HPD/CEC not configured yet; GPIO enable may need schematic confirm.
+ * GPIO LEDs (D1/D2 on carrier board):
+ * LED1 = GPIO0_C5, heartbeat trigger
+ * LED2 = GPIO0_D3, default-on
+ * Overrides evb leds node (which uses GPIO3_B7).
+ */
+&leds {
+	work_led: work {
+		gpios = <&gpio0 RK_PC5 GPIO_ACTIVE_HIGH>;
+		linux,default-trigger = "heartbeat";
+	};
+
+	user_led: user {
+		gpios = <&gpio0 RK_PD3 GPIO_ACTIVE_HIGH>;
+		default-state = "on";
+	};
+};
+
+/*
+ * GPIO power key: KEYB_PWROFFn = GPIO0_C6, active-low.
+ * Generates KEY_POWER event for system power-off / suspend.
+ */
+/ {
+	gpio-keys {
+		compatible = "gpio-keys";
+
+		power {
+			label = "power";
+			gpios = <&gpio0 RK_PC6 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_POWER>;
+			debounce-interval = <100>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&power_key_pin>;
+		};
+	};
+};
+
+/*
+ * HDMI0 output: direct VP0 → HDMI0.
+ * Pinctrl (CEC/HPD/SCL/SDA on M0 mux) already set in rk3588s.dtsi.
+ * Schematic: HDMI_TX0_SCL_M0=GPIO4_B7, SDA_M0=GPIO4_C0,
+ * HPD_M0=GPIO1_A5, CEC_M0=GPIO4_C1 (also HDMI0_TX_ON_H).
  */
 &hdmi0 {
 	status = "okay";
@@ -514,6 +559,15 @@
 			};
 		};
 	};
+
+	/* DS1307 RTC (U24) at 0x68, shares I2C2 with HUSB311.
+	 * 32.768kHz crystal + 3V backup battery (CON11).
+	 */
+	rtc@68 {
+		compatible = "dallas,ds1307";
+		reg = <0x68>;
+		status = "okay";
+	};
 };
 
 &u2phy0 {
@@ -649,11 +703,22 @@
 	status = "okay";
 };
 
+/* SoC watchdog timer (DW WDT at 0xfeaf0000) */
+&wdt {
+	status = "okay";
+};
+
 /* Type-C0 HUSB311 interrupt pin: GPIO4_B6, active-low, pull-up */
 &pinctrl {
 	usb-typec {
 		usbc0_int: usbc0-int {
 			rockchip,pins = <4 RK_PB6 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+	};
+
+	gpio-keys {
+		power_key_pin: power-key-pin {
+			rockchip,pins = <0 RK_PC6 RK_FUNC_GPIO &pcfg_pull_up>;
 		};
 	};
 };
