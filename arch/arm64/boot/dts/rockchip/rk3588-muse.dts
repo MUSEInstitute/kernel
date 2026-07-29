@@ -225,7 +225,10 @@
 	};
 };
 
-/* HDMI0 bring-up default; GPIO enable may need schematic confirm */
+/*
+ * HDMI0 output: bring-up default, direct VP0 → HDMI0.
+ * HPD/CEC not configured yet; GPIO enable may need schematic confirm.
+ */
 &hdmi0 {
 	status = "okay";
 };
@@ -243,6 +246,7 @@
 	connect = <&vp0_out_hdmi0>;
 };
 
+/* SAR ADC for board analog inputs (e.g. jack detection, voltage monitor) */
 &saradc {
 	status = "okay";
 };
@@ -616,6 +620,7 @@
 	status = "okay";
 };
 
+/* Type-C0 HUSB311 interrupt pin: GPIO4_B6, active-low, pull-up */
 &pinctrl {
 	usb-typec {
 		usbc0_int: usbc0-int {
