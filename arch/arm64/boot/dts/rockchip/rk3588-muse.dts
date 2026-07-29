@@ -86,6 +86,18 @@
 		regulator-max-microvolt = <3300000>;
 		vin-supply = <&vcc_3v3_main>;
 	};
+
+	/* M.2 l2 modem 3.3V power, controlled by FULL_CARD_POWER_OFF#
+	 * GPIO0_C6 HIGH = power ON, LOW = power OFF */
+	vcc3v3_m2_l2: vcc3v3-m2-l2 {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc3v3_m2_l2";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		enable-gpios = <&gpio0 RK_PC6 GPIO_ACTIVE_HIGH>;
+		regulator-boot-on;
+		vin-supply = <&vcc_3v3_main>;
+	};
 };
 
 /* eMMC boot */
@@ -292,5 +304,81 @@
 		 * (2ns @125MHz). rgmii-rxid correct: SoC adds TX delay.
 		 * Confirm VDDL (RGMII IO power) pin = 3.3V to match motorcomm,vddio.
 		 * tx_delay still needs on-board calibration. */
+	};
+};
+
+/*
+ * PCIe 3.0 x4 -> FPGA
+ *
+ * Reference clock: external RS2CG5705BLE clock buffer, always-on.
+ *   - Output 1: PCIE30_PORT0_REF_CLKP/N -> RK3588 PCIe3x4 ref clk
+ *   - Output 2: PCIE30_PORT1_REF_CLKP/N -> RK3588 (unused port)
+ *   - Output 3: Q0_REFCLKP/N            -> FPGA ref clk
+ *
+ * FPGA PERST# is not connected to RK3588 (no reset-gpios).
+ * PCIe 3.3V power is fixed/always-on (no vpcie3v3-supply).
+ * clkreqn is not used (external clock chip runs independently).
+ */
+&pcie30phy {
+	rockchip,pcie30-phymode = <PHY_MODE_PCIE_AGGREGATION>;
+	status = "okay";
+};
+
+&pcie3x4 {
+	status = "okay";
+};
+
+/*
+ * PCIe 2.0 x1 lanes
+ *
+ * l0: PCIe 2.1 interface, ext clk PI6C557-05BLE (feeds SoC + CON),
+ *     reset via NPOR_u (PMUIO power-on reset, no GPIO)
+ *     SMBus (SMCLK/SMDAT) on connector wired to I2C2 (SCL/SDA M0),
+ *     not used by PCIe driver, enable I2C2 separately if needed.
+ * l1: M.2 B-key SATA SSD (combphy2_psu in SATA mode, not PCIe)
+ * l2: M.2 B-key 4G/5G modem (RM500Q-GL), PCIe mode,
+ *     SoC internal clk, reset GPIO4_PA2 (A/AM29, pcie30x1_1_perstn_m1),
+ *     CLKREQ#/WAKE# not connected,
+ *     power controlled by GPIO0_C6 (FULL_CARD_POWER_OFF#).
+ *     Modem-specific: RESET# GPIO0_B2 (1.8V).
+ *
+ * l0/l2 power: l0 always-on, l2 GPIO-controlled (vcc3v3_m2_l2).
+ * l0 uses external refclk (rockchip,ext-refclk); l2 uses SoC internal clk.
+ */
+
+&combphy1_ps {
+	rockchip,ext-refclk;
+	status = "okay";
+};
+
+&pcie2x1l0 {
+	status = "okay";
+};
+
+&combphy2_psu {
+	status = "okay";
+};
+
+&sata2 {
+	status = "okay";
+};
+
+&combphy0_ps {
+	status = "okay";
+};
+
+&pcie2x1l2 {
+	reset-gpios = <&gpio4 RK_PA2 GPIO_ACTIVE_HIGH>;
+	vpcie3v3-supply = <&vcc3v3_m2_l2>;
+	status = "okay";
+};
+
+/* Modem control GPIOs (RM500Q-GL on l2) */
+&gpio0 {
+	4g-5g-rstn-hog {
+		gpio-hog;
+		gpios = <RK_PB2 GPIO_ACTIVE_HIGH>;
+		output-high;
+		line-name = "4g_5g_rstn";
 	};
 };
