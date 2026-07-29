@@ -555,19 +555,22 @@
 /*
  * PCIe 2.0 x1 lanes + SATA.
  *
- * l0 (pcie2x1l0): PCIe 2.1 interface.
+ * l0 (pcie2x1l0): M.2 M-key NVMe SSD (CON20).
+ *   - Data lanes: PCIE20_0 (via combphy1_ps)
  *   - External ref clock: PI6C557-05BLE (feeds both SoC and connector)
- *   - Reset: NPOR_u (PMUIO power-on reset, auto-release — no GPIO)
+ *   - Reset: GPIO4_A5 (A/AK27, PCIE30X1_0_PERSTN_M1, active-high)
  *   - SMBus (SMCLK/SMDAT) on connector wired to I2C2 (not used by PCIe)
  *   - combphy1_ps in PCIe mode with ext-refclk
  *   - Power: always-on
  *
- * l1 (pcie2x1l1): NOT used as PCIe — repurposed as SATA.
+ * l1 (pcie2x1l1): NOT used — combphy2_psu is in SATA mode for sata2.
  *   - M.2 B-key SATA SSD via combphy2_psu in SATA mode → &sata2
  *
  * l2 (pcie2x1l2): M.2 B-key 4G/5G modem (RM500Q-GL).
+ *   - Data lanes: PCIE20_2 (via combphy0_ps)
  *   - PCIe mode (MHI over PCIe), SoC internal clock
- *   - Reset: GPIO4_A2 (A/AM29, PCIE30X1_1_PERSTN_M1, active-high)
+ *   - Reset: GPIO4_C1 (A/AK24, PCIE20X1_2_PERSTN_M1, active-high)
+ *     (M0=GPIO3_D1 unavailable — used by USB Type-C0 SBU2 DC)
  *   - CLKREQ# / WAKE# not connected
  *   - Power: FULL_CARD_POWER_OFF# controlled by GPIO0_C6 (KEYB_PWROFFn)
  *     via Q21 level shifter, see vcc3v3_m2_l2 regulator above
@@ -582,6 +585,7 @@
 };
 
 &pcie2x1l0 {
+	reset-gpios = <&gpio4 RK_PA5 GPIO_ACTIVE_HIGH>;
 	status = "okay";
 };
 
@@ -601,11 +605,11 @@
 
 /*
  * pcie2x1l2: M.2 B-key 4G/5G modem (RM500Q-GL).
- * Reset: GPIO4_A2 (PCIE30X1_1_PERSTN_M1, active-high in Rockchip convention).
+ * Reset: GPIO4_C1 (PCIE20X1_2_PERSTN_M1, active-high in Rockchip convention).
  * Power: vcc3v3_m2_l2 (GPIO0_C6 → level shifter → FULL_CARD_POWER_OFF#).
  */
 &pcie2x1l2 {
-	reset-gpios = <&gpio4 RK_PA2 GPIO_ACTIVE_HIGH>;
+	reset-gpios = <&gpio4 RK_PC1 GPIO_ACTIVE_HIGH>;
 	vpcie3v3-supply = <&vcc3v3_m2_l2>;
 	status = "okay";
 };
