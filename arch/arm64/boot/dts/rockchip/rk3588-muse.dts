@@ -832,7 +832,7 @@
  *
  * Hardware (from carrier-board schematic):
  *   - No Type-C CC controller (pure Host, no PD negotiation)
- *   - VBUS 5V always-on (WS4612 EN tied to GND → permanently enabled)
+ *   - VBUS 5V always-on (WS4612 power switch, EN tied high — no GPIO control)
  *   - USB3.1 SuperSpeed lanes + USB2 D+/D−
  *   - Reset via NPOR_u (PMU power-on reset, auto-release — no GPIO)
  *
