@@ -11,9 +11,9 @@
  *   RK8602: VDD_CPU_BIG0, VDD_NPU
  *   RK8603: VDD_CPU_BIG1
  *
- * NOTE: I2C bus / pinmux for RK860x currently follows Rockchip EVB7
- * single-PMIC convention (i2c0m2 @0x42/0x43, i2c1m2 @0x42).
- * Confirm against schematic and adjust if different.
+ * NOTE: I2C bus / pinmux for RK860x verified against core-board schematic:
+ *   I2C0 M2: U2200=RK860-2 @0x42 (VDD_CPU_BIG0), U2201=RK860-3 @0x43 (VDD_CPU_BIG1)
+ *   I2C1 M2: U2202=RK860-2 @0x42 (VDD_NPU)
  */
 
 /dts-v1/;
@@ -225,16 +225,15 @@
  * I2C0 — CPU/NPU core-voltage regulators (M2 mux).
  *
  * Bus topology (from core-board schematic):
- *   I2C0_SCL_M2 / I2C0_SDA_M2  →  three discrete DCDC regulators:
+ *   I2C0_SCL_M2 / I2C0_SDA_M2  →  two discrete DCDC regulators:
  *     U2200 = RK860-2  @ 0x42  →  VDD_CPU_BIG0  (550 mV – 1.05 V)
  *     U2201 = RK860-3  @ 0x43  →  VDD_CPU_BIG1  (550 mV – 1.05 V)
- *     U2202 = RK860-2  @ 0x42  →  VDD_NPU       (550 mV – 0.95 V)
- *   (U2202 is on a separate I2C1 bus — see &i2c1 below.)
+ *   (U2202 = RK860-2 for VDD_NPU is on a separate I2C1 bus — see &i2c1 below.)
  *
  * Also on this bus: GW5A FPGA @ 0x51 ( PCIe endpoint).
  * Clock: 100 kHz standard mode (FPGA + regulators share the bus).
  *
- * Pinmux: i2c0m2_xfer (M2 mux: SCL=GPIO0_B5, SDA=GPIO0_B6).
+ * Pinmux: i2c0m2_xfer (M2 mux: SCL=GPIO0_D1, SDA=GPIO0_D2).
  */
 &i2c0 {
 	status = "okay";
@@ -284,7 +283,7 @@
  *   I2C1_SCL_M2 / I2C1_SDA_M2  →  one discrete DCDC regulator:
  *     U2202 = RK860-2  @ 0x42  →  VDD_NPU  (550 mV – 0.95 V)
  *
- * Pinmux: i2c1m2_xfer (M2 mux: SCL=GPIO0_B7, SDA=GPIO0_C0).
+ * Pinmux: i2c1m2_xfer (M2 mux: SCL=GPIO0_D4, SDA=GPIO0_D5).
  * Clock: 100 kHz (default).
  */
 &i2c1 {
@@ -622,7 +621,7 @@
  *     C270 = HUSB311  @ 0x4e  (Type-C PD + orientation controller)
  *     Q32  = DS1307   @ 0x68  (external RTC, 32.768 kHz crystal + backup battery)
  *
- * Pinmux: i2c2m0_xfer (M0 mux: SCL=GPIO3_A0, SDA=GPIO3_A1).
+ * Pinmux: i2c2m0_xfer (M0 mux: SCL=GPIO0_B7, SDA=GPIO0_C0).
  * Clock: 400 kHz fast mode.
  */
 &i2c2 {
