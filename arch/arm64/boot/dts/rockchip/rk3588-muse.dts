@@ -82,7 +82,9 @@
 	};
 
 	/* SD card main power (VDD_3V3_SOM_OUTPUT, 3.3V).
-	 * TODO: confirm source net and whether a load-switch enable GPIO exists. */
+	 * Schematic: SDMMC_PWREN (GPIO0_A5, PMUIO1 domain) is PMIC-controlled
+	 * (RK806), not a regular GPIO — no load-switch enable GPIO needed.
+	 * Power is always-on via PMIC; vmmc-supply references this regulator. */
 	vcc_3v3_som_output: vcc-3v3-som-output {
 		compatible = "regulator-fixed";
 		regulator-name = "vcc_3v3_som_output"; /* VDD_3V3_SOM_OUTPUT */
@@ -164,14 +166,17 @@
 /*
  * eMMC boot device (on-board BGA eMMC, not socketed).
  *
- * Hardware (from core-board schematic):
- *   - 8-bit data bus: EMMC_D0–D7
- *   - EMMC_DS  (data strobe, HS400 mode)
- *   - EMMC_RSTn (reset, driven by PMIC)
- *   - EMMC_CMD, EMMC_CLKOUT
- *   - VCC: 3.3V / 1.8V VQMMC (io-domain auto-switched by PMIC)
+ * Hardware (from core-board schematic, U4000: EMMC_B153_2L):
+ *   - 8-bit data bus: EMMC_D0–D7 (GPIO2_PD0–PD7)
+ *   - EMMC_DS  (data strobe, GPIO2_A2, HS400 mode)
+ *   - EMMC_RSTn (reset, GPIO2_A3, driven by PMIC)
+ *   - EMMC_CMD (GPIO2_A0), EMMC_CLKOUT (GPIO2_A1)
+ *   - VCC: 3.3V (VCC_3V3)
+ *   - VCCQ: EMMCIO (VCC_3V3) / EMMCIO_1V8 (VCC_1V8) — auto-switched
+ *     by PMIC for HS400ES / HS400 / HS200 modes.
  *
- * Pinmux: handled by rk3588.dtsi &sdhci default pinctrl (no board override).
+ * Pinmux: handled by rk3588s-pinctrl.dtsi emmc_bus8 / emmc_clk /
+ * emmc_cmd / emmc_data_strobe (no board override needed).
  * The Rockchip DWMSHC driver auto-negotiates HS400ES / HS400 / HS200.
  * No board-specific properties needed beyond status = "okay".
  */
@@ -183,18 +188,22 @@
  * MicroSD card slot (carrier board).
  *
  * Hardware (from schematic):
- *   - 4-bit data bus: SDMMC_D0–D3
- *   - SDMMC_CMD, SDMMC_CLK
+ *   - 4-bit data bus: SDMMC_D0–D3 (GPIO4_PD0–PD3)
+ *   - SDMMC_CMD (GPIO4_PD4), SDMMC_CLK (GPIO4_PD5)
  *   - Card detect: SDMMC_DET = GPIO0_A4 (native CD, active-low)
- *   - VCC (vmmc):  VDD_3V3_SOM_OUTPUT (3.3V, always-on)
- *   - VCCIO (vqmmc): VDD_3V3_MAIN (3.3V, fixed — no 1.8V signalling)
+ *   - SDMMC_PWREN = GPIO0_A5 (PMUIO1 domain, PMIC-controlled — not a GPIO)
+ *   - VCC (vmmc):  VDD_3V3_SOM_OUTPUT (3.3V, always-on via PMIC)
+ *   - VCCIO (vqmmc): VCCIO2 = VCC_3V3 = VDD_3V3_MAIN (3.3V, fixed)
  *
  * Limitations:
- *   - no-1-8-v: VCCIO2 is not switched to 1.8V, so UHS modes (SDR50/104)
- *     are unavailable; max speed is SDR25 / HS @ 50 MHz.
- *   - No write-protect pin on this slot.
+ *   - no-1-8-v: VCCIO2 is fixed at 3.3V (VCC_3V3). Although the hardware
+ *     has a VCCIO2_1V8 (VCC_1V8) alternative, the rk3588 io-domain driver
+ *     is absent in this 5.10 kernel, so UHS modes (SDR50/104) are
+ *     unavailable; max speed is SDR25 / HS @ 50 MHz.
+ *   - No write-protect pin on this slot (confirmed in schematic).
  *
- * Pinmux: sdmmc_clk / sdmmc_cmd / sdmmc_det / sdmmc_bus4 (from SoC dtsi).
+ * Pinmux: sdmmc_clk / sdmmc_cmd / sdmmc_det / sdmmc_bus4 (from SoC dtsi
+ * default — override is redundant but kept for explicitness).
  */
 &sdmmc {
 	status = "okay";
@@ -204,8 +213,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&sdmmc_clk &sdmmc_cmd &sdmmc_det &sdmmc_bus4>;
 	vmmc-supply = <&vcc_3v3_som_output>; /* VDD_3V3_SOM_OUTPUT */
-	vqmmc-supply = <&vcc_3v3_main>;       /* VCCIO2 fixed 3.3V */
-	/* TODO: add wp-gpios if the card slot has a write-protect pin */
+	vqmmc-supply = <&vcc_3v3_main>;       /* VCCIO2 = VCC_3V3, fixed 3.3V */
 };
 
 /*
