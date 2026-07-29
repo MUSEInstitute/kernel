@@ -417,7 +417,7 @@
 };
 
 /*
- * GMAC0 → YT8531SH-CA (R137) RGMII PHY, MDIO address 0.
+ * GMAC0 → YT8531SH-CA (U6) RGMII PHY, MDIO address 0.
  *
  * Hardware (from carrier-board schematic):
  *   - RGMII: TX_CLK/RX_CLK, TXD0–3, RXD0–3, TX_CTL, RX_CTL
@@ -428,7 +428,8 @@
  *   - IO voltage: VCCIO3 = 1.8 V (VDD_1V8_ETH0)
  *   - PHY address: 0 (PHYAD0 pin reused as LED0 output)
  *
- * PHY driver: motorcomm (YT8531), matched by PHY ID 0x4f51e91b.
+ * PHY driver: motorcomm (YT8531S), matched by PHY ID 0x4f51e91a
+ *              (auto-detected at runtime; "SH" = S variant + QFN package).
  * RGMII delay: PHY provides RX delay (2 ns via pull-up on RXD0);
  *              SoC provides TX delay via tx_delay register.
  *              ⇒ phy-mode = "rgmii-rxid".
@@ -442,7 +443,7 @@
 	/* RGMII IO is VCCIO3 1.8V */
 	snps,reset-gpio = <&gpio3 RK_PB2 GPIO_ACTIVE_LOW>;
 	snps,reset-active-low;
-	/* YT8531 reset low pulse; 20ms exceeds datasheet t_RST(min). Tune down if needed */
+	/* YT8531S reset low pulse; 20ms exceeds datasheet t_RST(min). Tune down if needed */
 	snps,reset-delays-us = <0 20000 100000>;
 
 	/* TODO: calibrate tx_delay on real board with iperf/ethtool */
@@ -461,20 +462,21 @@
 
 &mdio0 {
 	eth0_phy: ethernet-phy@0 {
-		/* YT8531 matched by PHY ID 0x4f51e91b via motorcomm driver */
+		/* YT8531S matched by PHY ID 0x4f51e91a via motorcomm driver */
 		compatible = "ethernet-phy-ieee802.3-c22";
 		reg = <0x0>;
 		/* RGMII IO is 1.8V (VCCIO3) -> matches SoC side IO voltage */
 		motorcomm,vddio = "1v8";
-		/* YT8531: no TXDLY on chip; RXDLY enabled by pull-up on RXD0
+		/* YT8531S: no TXDLY on chip; RXDLY enabled by pull-up on RXD0
 		 * (2ns @125MHz). So rgmii-rxid is correct: SoC adds TX delay via
-		 * tx_delay, PHY adds RX delay. Confirm VDDL (RGMII IO power) pin
-		 * = 1.8V to match motorcomm,vddio. tx_delay still needs calibration. */
+		 * tx_delay, PHY adds RX delay. motorcomm,vddio is documentation-
+		 * only for YT8531S (driver reads it only for YT8011). VCCIO3
+		 * = 1.8V is hardware-strapped. tx_delay needs calibration. */
 	};
 };
 
 /*
- * GMAC1 → YT8531SH-CA (R138) RGMII PHY, MDIO address 1.
+ * GMAC1 → YT8531SH-CA (U9) RGMII PHY, MDIO address 1.
  *
  * Hardware (from carrier-board schematic):
  *   - RGMII: TX_CLK/RX_CLK, TXD0–3, RXD0–3, TX_CTL, RX_CTL
@@ -485,7 +487,8 @@
  *   - IO voltage: 3.3 V domain
  *   - PHY address: 1 (PHYAD0 pin strapped high)
  *
- * PHY driver: motorcomm (YT8531), matched by PHY ID 0x4f51e91b.
+ * PHY driver: motorcomm (YT8531S), matched by PHY ID 0x4f51e91a
+ *              (auto-detected at runtime; "SH" = S variant + QFN package).
  * RGMII delay: same scheme as GMAC0 — PHY RX delay, SoC TX delay.
  *
  * TODO: calibrate tx_delay on real hardware with iperf / ethtool.
@@ -497,7 +500,7 @@
 	/* RGMII IO is 3.3V domain */
 	snps,reset-gpio = <&gpio3 RK_PB6 GPIO_ACTIVE_LOW>;
 	snps,reset-active-low;
-	/* 20ms reset pulse exceeds YT8531 t_RST(min); tune down if needed */
+	/* 20ms reset pulse exceeds YT8531S t_RST(min); tune down if needed */
 	snps,reset-delays-us = <0 20000 100000>;
 
 	tx_delay = <0x30>; /* TODO: calibrate on real board */
@@ -515,13 +518,14 @@
 
 &mdio1 {
 	eth1_phy: ethernet-phy@1 {
-		compatible = "ethernet-phy-ieee802.3-c22"; /* YT8531, PHY ID 0x4f51e91b */
+		compatible = "ethernet-phy-ieee802.3-c22"; /* YT8531S, PHY ID 0x4f51e91a */
 		reg = <0x1>;
 		motorcomm,vddio = "3v3"; /* RGMII IO is 3.3V */
-		/* YT8531: no TXDLY on chip; RXDLY enabled by pull-up on RXD0
+		/* YT8531S: no TXDLY on chip; RXDLY enabled by pull-up on RXD0
 		 * (2ns @125MHz). rgmii-rxid correct: SoC adds TX delay.
-		 * Confirm VDDL (RGMII IO power) pin = 3.3V to match motorcomm,vddio.
-		 * tx_delay still needs on-board calibration. */
+		 * motorcomm,vddio is documentation-only for YT8531S (driver
+		 * reads it only for YT8011). VCCIO4 = 3.3V is hardware-strapped.
+		 * tx_delay needs on-board calibration. */
 	};
 };
 
