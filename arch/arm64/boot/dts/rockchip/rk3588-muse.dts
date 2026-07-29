@@ -115,7 +115,7 @@
 	 *       handled by the Rockchip PMIC driver (rk8xx) internally.
 	 *
 	 * Modem reset is separately controlled via:
-	 *   - PERST#  (GPIO4_A2, pcie2x1l2 reset-gpios)
+	 *   - PERST#  (GPIO4_C1, pcie2x1l2 reset-gpios)
 	 *   - 4G_5G_RSTn (GPIO0_B2, gpio-hog)
 	 */
 	vcc3v3_m2_l2: vcc3v3-m2-l2 {
@@ -349,12 +349,18 @@
  *   - HDMI_TX0_CEC_M0  = GPIO4_C1  (CEC, also HDMI0_TX_ON_H)
  *   - Differential pairs: TX0P/N – TX3P/N (4 lanes)
  *
- * Pinmux: handled by rk3588s.dtsi (M0 mux, no board override needed).
+ * GPIO4_C1 conflict: HDMI_TX0_CEC_M0 and PCIE20X1_2_PERSTN_M1 share the
+ * same physical pin on the carrier board.  PCIe PERST is essential for the
+ * M.2 modem (pcie2x1l2), while CEC is optional for HDMI display.
+ * We override the SoC default pinctrl to drop CEC, freeing GPIO4_C1 for
+ * pcie2x1l2 reset-gpios.
+ *
  * PHY: &hdptxphy_hdmi0 (on-chip HDMI PHY, enabled below).
  * Route: VP0 → HDMI0 (no intermediate split).
  */
 &hdmi0 {
 	status = "okay";
+	pinctrl-0 = <&hdmim0_tx0_hpd &hdmim0_tx0_scl &hdmim0_tx0_sda>;
 };
 
 &hdmi0_in_vp0 {
@@ -379,7 +385,7 @@
  *   IN2: SARADC_IN2       — reserved (routed to connector)
  *   IN3: SARADC_IN3       — reserved (routed to connector)
  *   IN4: SARADC_IN4       — reserved (routed to connector)
- *   IN5: SARADC_VIN5      — HW_ID (hardware revision identification, IIO sysfs)
+ *   IN5: SARADC_VIN5_HW_ID — HW_ID (hardware revision identification, IIO sysfs)
  *
  * The recovery key on IN1 is configured as an adc-keys node below.
  * HW_ID on IN5 is read from user space via IIO sysfs — no DTS node needed.
@@ -571,6 +577,8 @@
  *   - PCIe mode (MHI over PCIe), SoC internal clock
  *   - Reset: GPIO4_C1 (A/AK24, PCIE20X1_2_PERSTN_M1, active-high)
  *     (M0=GPIO3_D1 unavailable — used by USB Type-C0 SBU2 DC)
+ *     (GPIO4_C1 also = HDMI_TX0_CEC_M0; CEC dropped from HDMI0 pinctrl
+ *      to free this pin for PCIe reset — see &hdmi0 override above)
  *   - CLKREQ# / WAKE# not connected
  *   - Power: FULL_CARD_POWER_OFF# controlled by GPIO0_C6 (KEYB_PWROFFn)
  *     via Q21 level shifter, see vcc3v3_m2_l2 regulator above
@@ -634,8 +642,8 @@
  *
  * Bus topology (from carrier-board schematic):
  *   I2C2_SCL_M0 / I2C2_SDA_M0  →  two devices:
- *     C270 = HUSB311  @ 0x4e  (Type-C PD + orientation controller)
- *     Q32  = DS1307   @ 0x68  (external RTC, 32.768 kHz crystal + backup battery)
+ *     U47  = HUSB311  @ 0x4e  (Type-C PD + orientation controller)
+ *     U24  = DS1307ZM  @ 0x68  (external RTC, Y4 32.768 kHz crystal + backup battery)
  *
  * Pinmux: i2c2m0_xfer (M0 mux: SCL=GPIO0_B7, SDA=GPIO0_C0).
  * Clock: 400 kHz fast mode.
@@ -647,7 +655,7 @@
 	clock-frequency = <400000>;
 
 	/*
-	 * HUSB311 Type-C PD controller (C270) @ 0x4e.
+	 * HUSB311 Type-C PD controller (U47) @ 0x4e.
 	 *
 	 * Hardware:
 	 *   - INT pin = GPIO4_B6 (active-low, pull-up)
@@ -722,12 +730,13 @@
 	};
 
 	/*
-	 * DS1307 RTC (Q32) @ 0x68 — external I2C real-time clock.
+	 * DS1307 RTC (U24) @ 0x68 — external I2C real-time clock.
 	 *
 	 * Hardware (from carrier-board schematic):
-	 *   - 32.768 kHz crystal (Y?) on X1/X2 pins
+	 *   - Y4 = 32.768 kHz crystal on X1/X2 pins
 	 *   - 3 V backup battery (CON11) on VBAT pin
 	 *   - SQW/OUT pin unused
+	 *   - VCC = 5 V (DS1307ZM); I2C open-drain, pull-ups to SoC IO domain
 	 *   - Shares I2C2 M0 bus with HUSB311
 	 *
 	 * Driver: rtc-ds1307 (dallas,ds1307 compatible).
