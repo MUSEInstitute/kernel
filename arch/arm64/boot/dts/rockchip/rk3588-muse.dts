@@ -917,6 +917,14 @@
  *   - Reset via NPOR_u (PMU power-on reset, auto-release — no GPIO)
  *   - USB2 D+/D− upstream port to SoC, 4× downstream D+/D−
  *
+ * Downstream devices on CH334H hub:
+ *   - FCU761K-L WiFi/BT module (Quectel, AIC8800DC chip, USB 2.0)
+ *     WiFi: 2.4 GHz 1×1, USB 2.0 full-speed enumeration
+ *     BT:   Bluetooth 4.2 BR/EDR, USB 2.0
+ *     Driver: aic8800 (out-of-tree, CONFIG_AIC_WLAN_SUPPORT=m)
+ *     Firmware: /lib/firmware/aic8800DC/ (pre-staged in rootfs overlay)
+ *     No DTS node needed — USB auto-enumerates; no GPIO/power control.
+ *
  * The CH334H is a standard USB hub; it auto-enumerates once the host
  * controller is active.  No board-specific DTS node needed for the hub
  * itself — only the host controller + PHY.
