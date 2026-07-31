@@ -46,3 +46,6 @@ hci_uart-$(CONFIG_BT_HCIUART_QCA)	+= hci_qca.o
 hci_uart-$(CONFIG_BT_HCIUART_AG6XX)	+= hci_ag6xx.o
 hci_uart-$(CONFIG_BT_HCIUART_MRVL)	+= hci_mrvl.o
 hci_uart-objs				:= $(hci_uart-y)
+
+# AIC8800 USB BT driver (FCU761K-L / AIC8800DC)
+obj-$(CONFIG_AIC_WLAN_SUPPORT) += aic_btusb/

@@ -126,3 +126,6 @@ config VIRT_WIFI
 	  are wifi connections through a special rtnetlink device.
 
 endif # WLAN
+
+# AIC8800 USB WiFi driver (FCU761K-L / AIC8800DC)
+source "drivers/net/wireless/aic8800/Kconfig"

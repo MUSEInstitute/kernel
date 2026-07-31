@@ -31,3 +31,6 @@ obj-$(CONFIG_MAC80211_HWSIM)	+= mac80211_hwsim.o
 
 obj-$(CONFIG_VIRT_WIFI)	+= virt_wifi.o
 obj-$(CONFIG_WL_ROCKCHIP)	+= rockchip_wlan/
+
+# AIC8800 USB WiFi driver (FCU761K-L / AIC8800DC)
+obj-$(CONFIG_AIC_WLAN_SUPPORT) += aic8800/
