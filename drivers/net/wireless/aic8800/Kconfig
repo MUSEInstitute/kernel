@@ -1,5 +1,5 @@
 config AIC_WLAN_SUPPORT
-	bool "AIC wireless Support"
+	tristate "AIC wireless Support"
 	default n
 	help
 	  This is support for aic wireless chip.
