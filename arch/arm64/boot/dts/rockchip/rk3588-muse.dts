@@ -22,6 +22,7 @@
 #include "rk3588-evb.dtsi"
 #include "rk3588-rk806-single.dtsi"
 #include "rk3588-linux.dtsi"
+#include <dt-bindings/usb/pd.h>
 
 /*
  * UART2 debug console: already enabled in rk3588-linux.dtsi.
