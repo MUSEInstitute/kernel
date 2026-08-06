@@ -146,21 +146,42 @@
 	};
 
 	/*
-	 * USB2 Host0 VBUS 5V — for SR9900AI USB-Ethernet.
+	 * USB2 Host0 ETH power — for SR9900AI USB-Ethernet.
 	 *
-	 * Hardware: ETH_PWRON = GPIO2_C4 (also DEVSLP), high = VBUS on.
-	 * Kept always-on since the SR9900AI draws power continuously.
+	 * Hardware (from carrier-board schematic, page "USB ETH"):
+	 *   ETH_PWRON = GPIO2_C4_d (1.8V) → U18 (TXS0108E level shifter)
+	 *   → R401 (0Ω) → Q49 GATE (CJ3401 P-ch MOSFET)
+	 *   Q49 SOURCE ← VDD_3V3_MAIN (3.3V always-on)
+	 *   Q49 DRAIN → FB17 (DNP ferrite) → SR9900AI VDD5
+	 *
+	 * Polarity: active-LOW (P-ch MOSFET)
+	 *   GPIO LOW  → MOSFET ON  → SR9900 powered  → Ethernet up
+	 *   GPIO HIGH → MOSFET OFF → SR9900 unpowered → Ethernet down
+	 *
+	 * Default (GPIO unconfigured): U18 internal pull-up → HIGH → OFF (safe).
+	 *
+	 * NOTE: "enable-active-high" must NOT be present.  The kernel
+	 *   (gpiolib-of.c) uses the presence/absence of that property as the
+	 *   SOLE polarity control for regulator-fixed; phandle GPIO_ACTIVE_HIGH
+	 *   flags are explicitly ignored.  With enable-active-high the GPIO is
+	 *   driven HIGH → MOSFET stays OFF → SR9900 never powers on.
+	 *
+	 * GPIO2_C4_d is also wired to SATA DEVSLP via R76 (DNP_0Ω), which
+	 * breaks that path — so the GPIO is exclusively used for ETH_PWRON.
+	 *
+	 * regulator-boot-on is essential: the regulator subsystem initialises
+	 * (subsys_initcall) before the USB host controller, so power is applied
+	 * before USB scans and finds the SR9900AI already powered.
 	 */
 	vbus5v0_host0: vbus5v0-host0 {
 		compatible = "regulator-fixed";
 		regulator-name = "vbus5v0_host0";
-		regulator-min-microvolt = <5000000>;
-		regulator-max-microvolt = <5000000>;
-		enable-active-high;
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
 		gpio = <&gpio2 RK_PC4 GPIO_ACTIVE_HIGH>;
 		regulator-always-on;
 		regulator-boot-on;
-		vin-supply = <&vcc5v0_sys>;
+		vin-supply = <&vcc_3v3_main>;
 	};
 };
 
@@ -882,16 +903,18 @@
 /*
  * USB2 Host0: SR9900AI USB-to-Ethernet adapter (ETH2).
  *
- * Hardware (from carrier-board schematic):
- *   - SR9900AI is a USB 2.0 → 10/100 Ethernet chip (C??)
- *   - VBUS 5V controlled by ETH_PWRON = GPIO2_C4 (also DEVSLP)
+ * Hardware (from carrier-board schematic, page "USB ETH"):
+ *   - SR9900AI is a USB 2.0 → 10/100 Ethernet chip (U42)
+ *   - Power: 3.3V via P-ch MOSFET Q49, controlled by ETH_PWRON = GPIO2_C4_d
+ *   - Polarity: active-LOW (GPIO low = MOSFET on = SR9900 powered)
  *   - USB2 D+/D− only (no SuperSpeed)
  *
  * The SR9900AI is a standard USB Ethernet device; it auto-enumerates
  * once the USB host controller is active.  No board-specific DTS node
  * is needed for the device itself — only the host controller + PHY.
- * VBUS is kept always-on (regulator-always-on) since the SR9900AI
- * draws power continuously.
+ * Power is kept always-on (regulator-always-on + regulator-boot-on)
+ * since the SR9900AI has no software shutdown pin; the MOSFET is the
+ * only power-gating mechanism.
  */
 &u2phy2 {
 	status = "okay";
