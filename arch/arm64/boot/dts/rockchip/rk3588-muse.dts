@@ -663,9 +663,10 @@
  * I2C2 — Type-C0 controller + DS1307 RTC (M0 mux).
  *
  * Bus topology (from carrier-board schematic):
- *   I2C2_SCL_M0 / I2C2_SDA_M0  →  two devices:
+ *   I2C2_SCL_M0 / I2C2_SDA_M0  →  three devices:
  *     U47  = HUSB311  @ 0x4e  (Type-C PD + orientation controller)
  *     U24  = DS1307ZM  @ 0x68  (external RTC, Y4 32.768 kHz crystal + backup battery)
+ *     U26  = XL9555    @ 0x20  (16-bit I/O expander: SATA_DEVSLP, MIPI CSI PWDN1-4)
  *
  * Pinmux: i2c2m0_xfer (M0 mux: SCL=GPIO0_B7, SDA=GPIO0_C0).
  * Clock: 400 kHz fast mode.
@@ -768,6 +769,32 @@
 	rtc@68 {
 		compatible = "dallas,ds1307";
 		reg = <0x68>;
+		status = "okay";
+	};
+
+	/*
+	 * XL9555 I/O expander (U26) @ 0x20 — 16-bit GPIO expander.
+	 *
+	 * Hardware (from carrier-board schematic):
+	 *   - I2C2 M0 bus, address 0x20 (A0=A1=A2=GND)
+	 *   - INT pin = GPIO4_A0 (active-low, open-drain, pull-up)
+	 *   - P00 = SATA_DEVSLP
+	 *   - P02 = MIPI_CSI_PWDN1, P03 = MIPI_CSI_PWDN2
+	 *   - P04 = MIPI_CSI_PWDN3, P05 = MIPI_CSI_PWDN4
+	 *   - P01, P06, P07, P10-P17 unused
+	 *
+	 * Driver: gpio-pca953x (nxp,pca9555 compatible; XL9555 is pin/function
+	 * compatible with NXP PCA9555 — 16-bit I2C GPIO expander with INT output).
+	 */
+	xl9555: pca953x@20 {
+		compatible = "nxp,pca9555";
+		reg = <0x20>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		interrupt-parent = <&gpio4>;
+		interrupts = <RK_PA0 IRQ_TYPE_EDGE_FALLING>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&xl9555_int>;
 		status = "okay";
 	};
 };
@@ -1015,6 +1042,9 @@
  *   m2_l2_pwren: GPIO0_C6 (KEYB_PWROFFn) → level shifter → FULL_CARD_POWER_OFF#.
  *   Configured as GPIO output, no pull (driven by regulator-fixed driver).
  *
+ * XL9555 I/O expander:
+ *   xl9555_int: interrupt pin = GPIO4_A0, active-low, pull-up (open-drain INT output).
+ *
  * NOTE: The board power button is PMIC_PWRONN (PMIC internal, no GPIO needed).
  */
 &pinctrl {
@@ -1027,6 +1057,12 @@
 	gpio-misc {
 		m2_l2_pwren: m2-l2-pwren {
 			rockchip,pins = <0 RK_PC6 RK_FUNC_GPIO &pcfg_output_high>;
+		};
+	};
+
+	xl9555-int {
+		xl9555_int: xl9555-int {
+			rockchip,pins = <4 RK_PA0 RK_FUNC_GPIO &pcfg_pull_up>;
 		};
 	};
 };
