@@ -792,6 +792,23 @@
 	status = "okay";
 };
 
+/*
+ * USB3 Host controller 2 (usbhost3_0 / usbhost_dwc3_0) — DISABLED.
+ *
+ * usbhost_dwc3_0 requires combphy2_psu in USB3 mode, but combphy2_psu is
+ * already in SATA mode for sata2 (M.2 B-key SATA SSD).  The SoC pins
+ * PCIE20_2/SATA30_2/USB30_2 are triplexed — only one function at a time.
+ * Schematic confirms no USB3 device on these lanes, so disable to avoid
+ * PHY mode conflict with sata2.
+ */
+&usbhost3_0 {
+	status = "disabled";
+};
+
+&usbhost_dwc3_0 {
+	status = "disabled";
+};
+
 /* combphy0_ps: PCIe mode for pcie2x1l2 (M.2 4G/5G modem) */
 &combphy0_ps {
 	status = "okay";
@@ -1077,6 +1094,11 @@
 	status = "okay";
 };
 
+/* Type-C1 has no PD controller → no DP alt-mode negotiation → disable DP */
+&usbdp_phy1_dp {
+	status = "disabled";
+};
+
 &usbdrd3_1 {
 	status = "okay";
 };
@@ -1202,10 +1224,6 @@
  * USB Type-C0:
  *   usbc0_int: HUSB311 interrupt pin = GPIO4_B6, active-low, pull-up.
  *
- * M.2 modem power enable:
- *   m2_l2_pwren: GPIO0_C6 (KEYB_PWROFFn) → level shifter → FULL_CARD_POWER_OFF#.
- *   Configured as GPIO output, no pull (driven by regulator-fixed driver).
- *
  * XL9555 I/O expander:
  *   xl9555_int: interrupt pin = GPIO4_A0, active-low, pull-up (open-drain INT output).
  *
@@ -1215,12 +1233,6 @@
 	usb-typec {
 		usbc0_int: usbc0-int {
 			rockchip,pins = <4 RK_PB6 RK_FUNC_GPIO &pcfg_pull_up>;
-		};
-	};
-
-	gpio-misc {
-		m2_l2_pwren: m2-l2-pwren {
-			rockchip,pins = <0 RK_PC6 RK_FUNC_GPIO &pcfg_output_high>;
 		};
 	};
 
