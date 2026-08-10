@@ -399,6 +399,170 @@
 };
 
 /*
+ * HDMI RX (HDMI IN) — carrier-board HDMI Type-A input connector.
+ *
+ * Hardware (from carrier-board schematic):
+ *   - HDMI RX signals use M2 pinmux:
+ *       HPD  = GPIO1_B6 (hdmim2_rx_hpdin)
+ *       SCL  = GPIO1_D6 (hdmim2_rx_scl)
+ *       SDA  = GPIO1_D7 (hdmim2_rx_sda)
+ *   - CEC (GPIO1_B7, hdmim2_rx_cec) is not connected on this board — omitted.
+ *   - 5V detect = GPIO4_A1, active-low (HDMI_RX_DET_L)
+ *
+ * Driver: CONFIG_VIDEO_ROCKCHIP_HDMIRX=y (rk_hdmirx.c)
+ * CMA: uses default 8 MB CMA from rk3588-linux.dtsi (no dedicated reserved memory).
+ */
+&hdmirx_ctrler {
+	status = "okay";
+
+	#sound-dai-cells = <1>;
+	/* Effective level used to trigger HPD: 0-low, 1-high */
+	hpd-trigger-level = <1>;
+	hdmirx-det-gpios = <&gpio4 RK_PA1 GPIO_ACTIVE_LOW>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&hdmim2_rx_hpdin &hdmim2_rx_scl &hdmim2_rx_sda &hdmirx_det>;
+};
+
+/*
+ * MIPI CSI — carrier-board camera connectors.
+ *
+ * Hardware (from carrier-board schematic):
+ *   - CSI0: 4-lane (D0-D3, CLK0, CLK1) → 30-pin FPC connector
+ *   - CSI1: 4-lane (D0-D3, CLK0, CLK1) → 2× FFC connectors
+ *   - PWDN1-4 controlled by XL9555 I/O expander (P02-P05)
+ *
+ * The base camera pipeline (RKCIF → CSI host → DPHY) is enabled below.
+ * A camera sensor node (e.g., imx415@1a) with its I2C bus, power GPIOs,
+ * and endpoint linking sensor→DPHY must be added for each connected sensor.
+ *
+ * Pipeline: sensor → csi2_dcphy0 → mipi0_csi2 → rkcif_mipi_lvds → rkcif
+ *                    → rkcif_mipi_lvds_sditf → rkisp0_vir0 → rkisp0
+ *
+ * Board design: the MIPI CSI connector (J19) has a MIPI_MCLK pin but it is
+ * NOT routed to any SoC camera clock output GPIO (CLK_MIPI_CAMARAOUT).
+ * The camera sensor must use its own oscillator.  No camera clock GPIO is
+ * needed, so there is NO pin conflict with HDMI RX M2 (GPIO1_B6/D6/D7).
+ * Power domains are separate (HDMI RX=PD_VO1, CSI=PD_VI).
+ */
+&rkcif {
+	status = "okay";
+};
+
+&rkcif_mmu {
+	status = "okay";
+};
+
+&rkcif_mipi_lvds {
+	status = "okay";
+
+	port {
+		cif_mipi_in0: endpoint {
+			remote-endpoint = <&mipi0_csi2_output>;
+		};
+	};
+};
+
+&rkcif_mipi_lvds_sditf {
+	status = "okay";
+
+	port {
+		mipi_lvds_sditf: endpoint {
+			remote-endpoint = <&isp0_vir0>;
+		};
+	};
+};
+
+&rkisp0 {
+	status = "okay";
+};
+
+&isp0_mmu {
+	status = "okay";
+};
+
+&rkisp0_vir0 {
+	status = "okay";
+
+	port {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		isp0_vir0: endpoint@0 {
+			reg = <0>;
+			remote-endpoint = <&mipi_lvds_sditf>;
+		};
+	};
+};
+
+&mipi_dcphy0 {
+	status = "okay";
+};
+
+&csi2_dcphy0 {
+	status = "okay";
+
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		port@0 {
+			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			/*
+			 * Sensor input endpoints — add when a camera is connected:
+			 *   mipi_in_ucam0: endpoint@1 {
+			 *       reg = <1>;
+			 *       remote-endpoint = <&sensor_out0>;
+			 *       data-lanes = <1 2 3 4>;
+			 *   };
+			 */
+		};
+		port@1 {
+			reg = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			csidcphy0_out: endpoint@0 {
+				reg = <0>;
+				remote-endpoint = <&mipi0_csi2_input>;
+			};
+		};
+	};
+};
+
+&mipi0_csi2 {
+	status = "okay";
+
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@0 {
+			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			mipi0_csi2_input: endpoint@1 {
+				reg = <1>;
+				remote-endpoint = <&csidcphy0_out>;
+			};
+		};
+
+		port@1 {
+			reg = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			mipi0_csi2_output: endpoint@0 {
+				reg = <0>;
+				remote-endpoint = <&cif_mipi_in0>;
+			};
+		};
+	};
+};
+
+/*
  * SAR ADC — 8-channel, 12-bit, 1.8 V reference (from RK806 PLDO_REG2).
  *
  * Channel mapping (from core-board schematic):
@@ -1063,6 +1227,12 @@
 	xl9555-int {
 		xl9555_int: xl9555-int {
 			rockchip,pins = <4 RK_PA0 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+	};
+
+	hdmirx {
+		hdmirx_det: hdmirx-det {
+			rockchip,pins = <4 RK_PA1 RK_FUNC_GPIO &pcfg_pull_up>;
 		};
 	};
 };
