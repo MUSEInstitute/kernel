@@ -116,7 +116,7 @@
 	 *       handled by the Rockchip PMIC driver (rk8xx) internally.
 	 *
 	 * Modem reset is separately controlled via:
-	 *   - PERST#  (GPIO4_C1, pcie2x1l1 reset-gpios)
+	 *   - PERST#  (GPIO4_A2, pcie2x1l1 reset-gpios)
 	 *   - 4G_5G_RSTn (GPIO0_B2, gpio-hog)
 	 */
 	vcc3v3_m2_l2: vcc3v3-m2-l2 {
@@ -368,14 +368,11 @@
  *   - HDMI_TX0_SCL_M0  = GPIO4_B7  (DDC I2C clock)
  *   - HDMI_TX0_SDA_M0  = GPIO4_C0  (DDC I2C data)
  *   - HDMI_TX0_HPD_M0  = GPIO1_A5  (hot-plug detect)
- *   - HDMI_TX0_CEC_M0  = GPIO4_C1  (CEC, also HDMI0_TX_ON_H)
+ *   - HDMI_TX0_CEC_M0  = GPIO4_C1  (repurposed as HDMI0_TX_ON_H power control)
  *   - Differential pairs: TX0P/N – TX3P/N (4 lanes)
  *
- * GPIO4_C1 conflict: HDMI_TX0_CEC_M0 and PCIE20X1_2_PERSTN_M1 share the
- * same physical pin on the carrier board.  PCIe PERST is essential for the
- * M.2 modem (pcie2x1l1), while CEC is optional for HDMI display.
- * We override the SoC default pinctrl to drop CEC, freeing GPIO4_C1 for
- * pcie2x1l1 reset-gpios.
+ * GPIO4_C1 (AK24) is used as HDMI0_TX_ON_H (GPIO output for HDMI TX power
+ * enable), not as CEC.  CEC is therefore omitted from the pinctrl.
  *
  * PHY: &hdptxphy_hdmi0 (on-chip HDMI PHY, enabled below).
  * Route: VP0 → HDMI0 (no intermediate split).
@@ -750,7 +747,8 @@
  * l2 (pcie2x1l2): mini PCIe slot (C9963).
  *   - Data lanes: PCIE20_0 (via combphy0_ps)
  *   - External ref clock: PI6C557-05BLE (feeds both SoC and connector)
- *   - Reset: GPIO4_A5 (A/AK27, PCIE30X1_0_PERSTN_M1, active-high)
+ *   - Reset: SoC NPOR (ball M31) via U19 level shifter (1.8V→3.3V)
+ *     NPOR is power-on reset, not a GPIO — no reset-gpios needed
  *   - SMBus (SMCLK/SMDAT) on connector wired to I2C2 (not used by PCIe)
  *   - combphy0_ps in PCIe mode with ext-refclk
  *   - Power: always-on
@@ -758,10 +756,8 @@
  * l1 (pcie2x1l1): M.2 B-key 4G/5G modem (RM500Q-GL).
  *   - Data lanes: PCIE20_2 (via combphy2_psu)
  *   - PCIe mode (MHI over PCIe), SoC internal clock
- *   - Reset: GPIO4_C1 (A/AK24, PCIE20X1_2_PERSTN_M1, active-high)
- *     (M0=GPIO3_D1 unavailable — used by USB Type-C0 SBU2 DC)
- *     (GPIO4_C1 also = HDMI_TX0_CEC_M0; CEC dropped from HDMI0 pinctrl
- *      to free this pin for PCIe reset — see &hdmi0 override above)
+ *   - Reset: GPIO4_A2 (A/AM29, PCIE30X1_1_PERSTN_M1, active-high)
+ *     (via R85 0Ω to CON1 PERST# pin 50; R83 to GPIO0_C7 is DNP)
  *   - CLKREQ# / WAKE# not connected
  *   - Power: FULL_CARD_POWER_OFF# controlled by GPIO0_C6 (KEYB_PWROFFn)
  *     via Q21 level shifter, see vcc3v3_m2_l2 regulator above
@@ -779,7 +775,6 @@
 };
 
 &pcie2x1l2 {
-	reset-gpios = <&gpio4 RK_PA5 GPIO_ACTIVE_HIGH>;
 	status = "okay";
 };
 
@@ -816,11 +811,11 @@
 
 /*
  * pcie2x1l1: M.2 B-key 4G/5G modem (RM500Q-GL).
- * Reset: GPIO4_C1 (PCIE20X1_2_PERSTN_M1, active-high in Rockchip convention).
+ * Reset: GPIO4_A2 (PCIE30X1_1_PERSTN_M1, active-high in Rockchip convention).
  * Power: vcc3v3_m2_l2 (GPIO0_C6 → level shifter → FULL_CARD_POWER_OFF#).
  */
 &pcie2x1l1 {
-	reset-gpios = <&gpio4 RK_PC1 GPIO_ACTIVE_HIGH>;
+	reset-gpios = <&gpio4 RK_PA2 GPIO_ACTIVE_HIGH>;
 	vpcie3v3-supply = <&vcc3v3_m2_l2>;
 	status = "okay";
 };
