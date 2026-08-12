@@ -102,7 +102,7 @@
 	 * Schematic: GPIO0_C6 (KEYB_PWROFFn) is a SoC output (1.8V) that
 	 * goes through a level shifter (Q21, CJ3400 NPN) on the carrier
 	 * board to become a 3.3V signal, which then drives the
-	 * FULL_CARD_POWER_OFF# pin on the M.2 connector (CON4).
+	 * FULL_CARD_POWER_OFF# pin on the M.2 connector (CON1).
 	 *
 	 * Signal path:
 	 *   GPIO0_C6 (1.8V) → Q21 level shifter → FULL_CARD_POWER_OFF# (3.3V)
@@ -116,7 +116,7 @@
 	 *       handled by the Rockchip PMIC driver (rk8xx) internally.
 	 *
 	 * Modem reset is separately controlled via:
-	 *   - PERST#  (GPIO4_C1, pcie2x1l2 reset-gpios)
+	 *   - PERST#  (GPIO4_C1, pcie2x1l1 reset-gpios)
 	 *   - 4G_5G_RSTn (GPIO0_B2, gpio-hog)
 	 */
 	vcc3v3_m2_l2: vcc3v3-m2-l2 {
@@ -373,9 +373,9 @@
  *
  * GPIO4_C1 conflict: HDMI_TX0_CEC_M0 and PCIE20X1_2_PERSTN_M1 share the
  * same physical pin on the carrier board.  PCIe PERST is essential for the
- * M.2 modem (pcie2x1l2), while CEC is optional for HDMI display.
+ * M.2 modem (pcie2x1l1), while CEC is optional for HDMI display.
  * We override the SoC default pinctrl to drop CEC, freeing GPIO4_C1 for
- * pcie2x1l2 reset-gpios.
+ * pcie2x1l1 reset-gpios.
  *
  * PHY: &hdptxphy_hdmi0 (on-chip HDMI PHY, enabled below).
  * Route: VP0 → HDMI0 (no intermediate split).
@@ -747,19 +747,16 @@
 /*
  * PCIe 2.0 x1 lanes + SATA.
  *
- * l0 (pcie2x1l0): M.2 M-key NVMe SSD (CON20).
- *   - Data lanes: PCIE20_0 (via combphy1_ps)
+ * l2 (pcie2x1l2): mini PCIe slot (C9963).
+ *   - Data lanes: PCIE20_0 (via combphy0_ps)
  *   - External ref clock: PI6C557-05BLE (feeds both SoC and connector)
  *   - Reset: GPIO4_A5 (A/AK27, PCIE30X1_0_PERSTN_M1, active-high)
  *   - SMBus (SMCLK/SMDAT) on connector wired to I2C2 (not used by PCIe)
- *   - combphy1_ps in PCIe mode with ext-refclk
+ *   - combphy0_ps in PCIe mode with ext-refclk
  *   - Power: always-on
  *
- * l1 (pcie2x1l1): NOT used — combphy2_psu is in SATA mode for sata2.
- *   - M.2 B-key SATA SSD via combphy2_psu in SATA mode → &sata2
- *
- * l2 (pcie2x1l2): M.2 B-key 4G/5G modem (RM500Q-GL).
- *   - Data lanes: PCIE20_2 (via combphy0_ps)
+ * l1 (pcie2x1l1): M.2 B-key 4G/5G modem (RM500Q-GL).
+ *   - Data lanes: PCIE20_2 (via combphy2_psu)
  *   - PCIe mode (MHI over PCIe), SoC internal clock
  *   - Reset: GPIO4_C1 (A/AK24, PCIE20X1_2_PERSTN_M1, active-high)
  *     (M0=GPIO3_D1 unavailable — used by USB Type-C0 SBU2 DC)
@@ -769,26 +766,29 @@
  *   - Power: FULL_CARD_POWER_OFF# controlled by GPIO0_C6 (KEYB_PWROFFn)
  *     via Q21 level shifter, see vcc3v3_m2_l2 regulator above
  *   - Modem RESET#: GPIO0_B2 (4G_5G_RSTn, 1.8V, gpio-hog output-high)
- *   - combphy0_ps in PCIe mode
+ *   - combphy2_psu in PCIe mode
+ *
+ * SATA: M.2 B-key SATA SSD (CON4) via combphy1_ps in SATA mode → &sata1.
+ *   - Data lanes: SATA30_1 (via combphy1_ps)
  */
 
-/* combphy1_ps: PCIe mode with external refclk for pcie2x1l0 */
-&combphy1_ps {
+/* combphy0_ps: PCIe mode with external refclk for pcie2x1l2 (mini PCIe slot) */
+&combphy0_ps {
 	rockchip,ext-refclk;
 	status = "okay";
 };
 
-&pcie2x1l0 {
+&pcie2x1l2 {
 	reset-gpios = <&gpio4 RK_PA5 GPIO_ACTIVE_HIGH>;
 	status = "okay";
 };
 
-/* combphy2_psu: SATA mode for M.2 B-key SATA SSD (replaces pcie2x1l1) */
-&combphy2_psu {
+/* combphy1_ps: SATA mode for M.2 B-key SATA SSD (CON4) → sata1 */
+&combphy1_ps {
 	status = "okay";
 };
 
-&sata2 {
+&sata1 {
 	status = "okay";
 };
 
@@ -796,10 +796,10 @@
  * USB3 Host controller 2 (usbhost3_0 / usbhost_dwc3_0) — DISABLED.
  *
  * usbhost_dwc3_0 requires combphy2_psu in USB3 mode, but combphy2_psu is
- * already in SATA mode for sata2 (M.2 B-key SATA SSD).  The SoC pins
+ * already in PCIe mode for pcie2x1l1 (M.2 4G/5G modem).  The SoC pins
  * PCIE20_2/SATA30_2/USB30_2 are triplexed — only one function at a time.
  * Schematic confirms no USB3 device on these lanes, so disable to avoid
- * PHY mode conflict with sata2.
+ * PHY mode conflict with pcie2x1l1.
  */
 &usbhost3_0 {
 	status = "disabled";
@@ -809,24 +809,24 @@
 	status = "disabled";
 };
 
-/* combphy0_ps: PCIe mode for pcie2x1l2 (M.2 4G/5G modem) */
-&combphy0_ps {
+/* combphy2_psu: PCIe mode for pcie2x1l1 (M.2 4G/5G modem) */
+&combphy2_psu {
 	status = "okay";
 };
 
 /*
- * pcie2x1l2: M.2 B-key 4G/5G modem (RM500Q-GL).
+ * pcie2x1l1: M.2 B-key 4G/5G modem (RM500Q-GL).
  * Reset: GPIO4_C1 (PCIE20X1_2_PERSTN_M1, active-high in Rockchip convention).
  * Power: vcc3v3_m2_l2 (GPIO0_C6 → level shifter → FULL_CARD_POWER_OFF#).
  */
-&pcie2x1l2 {
+&pcie2x1l1 {
 	reset-gpios = <&gpio4 RK_PC1 GPIO_ACTIVE_HIGH>;
 	vpcie3v3-supply = <&vcc3v3_m2_l2>;
 	status = "okay";
 };
 
 /*
- * Modem control GPIO (RM500Q-GL on PCIe l2):
+ * Modem control GPIO (RM500Q-GL on PCIe l1):
  *   4G_5G_RSTn = GPIO0_B2 (1.8V, active-high in Rockchip convention).
  *   Hogged high at boot to keep the modem out of reset.
  *   (Toggle low→high to force a modem cold reset if needed.)
