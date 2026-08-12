@@ -1214,6 +1214,66 @@
 };
 
 /*
+ * Fan support — two connectors on the carrier board.
+ *
+ * U9909 (B4B-XH-A, JST XH 4-pin, 2.5 mm pitch) — PWM speed-controlled fan:
+ *   Pin 1: PWM speed control (5 V, level-shifted from SoC PWM2_M0 / GPIO0_C4
+ *          via Q9501 2SK3018 N-MOSFET common-gate + R9905 10 kΩ pull-up to 5 V)
+ *   Pin 2: NC (tachometer not wired)
+ *   Pin 3: +12 V (always on, R9901 0 Ω to VDD_12V_MAIN, 100 nF + 10 µF decoupling)
+ *   Pin 4: GND
+ *
+ * J31 (KF2510-3A, 3-pin, 2.54 mm pitch) — GPIO on/off fan:
+ *   Pin 1: NC
+ *   Pin 2: Switched +12 V (Q9502 CJ3401 P-MOSFET high-side switch)
+ *   Pin 3: GND
+ *   Control chain: SoC GPIO4_C3 (PWM4_M1, ball AF34) → R9912 10 kΩ →
+ *     Q9503 MMBT3904 NPN → R9911 1 kΩ → Q9502 gate.
+ *     GPIO HIGH → Q9503 ON → Q9502 gate LOW → Q9502 ON → 12 V output.
+ *
+ * Thermal integration: both fans are added as cooling devices to the
+ * SoC thermal zone (soc_thermal).  When SoC temperature exceeds the
+ * 85 °C target trip point, the thermal governor ramps up fan0 (PWM)
+ * and turns on fan1 (GPIO), in addition to the existing CPU/GPU
+ * frequency throttling.
+ */
+/ {
+	fan0: pwm-fan {
+		compatible = "pwm-fan";
+		#cooling-cells = <2>;
+		pwms = <&pwm2 0 40000 0>;	/* 25 kHz, standard PC fan PWM */
+		cooling-levels = <0 80 120 160 200 255>;
+	};
+
+	fan1: gpio-fan {
+		compatible = "gpio-fan";
+		#cooling-cells = <2>;
+		gpios = <&gpio4 RK_PC3 GPIO_ACTIVE_HIGH>;
+		gpio-fan,speed-map = <0 0>, <5000 1>;
+	};
+};
+
+&pwm2 {
+	status = "okay";
+	pinctrl-0 = <&pwm2m0_pins>;
+};
+
+&soc_thermal {
+	cooling-maps {
+		map4 {
+			trip = <&target>;
+			cooling-device = <&fan0 0 5>;
+			contribution = <1024>;
+		};
+		map5 {
+			trip = <&target>;
+			cooling-device = <&fan1 0 1>;
+			contribution = <1024>;
+		};
+	};
+};
+
+/*
  * Board-specific pinctrl overrides.
  *
  * USB Type-C0:
@@ -1240,6 +1300,12 @@
 	hdmirx {
 		hdmirx_det: hdmirx-det {
 			rockchip,pins = <4 RK_PA1 RK_FUNC_GPIO &pcfg_pull_up>;
+		};
+	};
+
+	fan1 {
+		fan1_gpio: fan1-gpio {
+			rockchip,pins = <4 RK_PC3 RK_FUNC_GPIO &pcfg_pull_none>;
 		};
 	};
 };
