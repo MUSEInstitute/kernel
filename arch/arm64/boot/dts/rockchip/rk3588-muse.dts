@@ -30,6 +30,25 @@
  * Console: earlycon=uart8250,mmio32,0xfeb50000, FIQ debugger at 1.5Mbaud.
  */
 
+/*
+ * UART0 — RS232 serial port (P9 connector, 10-pin IDC header).
+ *
+ * Hardware path (carrier-board schematic):
+ *   SoC UART0_TX_M2 (GPIO4_A3, ball AL29) → R468 (10Ω) → U59 T1IN
+ *   U59 R1OUT → R469 (10Ω) → SoC UART0_RX_M2 (GPIO4_A4, ball AL28)
+ *   U59 = MAX232A / SIT3232EEUE (3.3V RS232 transceiver, no driver needed)
+ *   U59 T1OUT → P9 pin 3 (TXD),  P9 pin 2 (RXD) → U59 R1IN
+ *
+ * Pinctrl: uart0m2_xfer (M2 mux: TX=GPIO4_A3, RX=GPIO4_A4).
+ *
+ * Note: U66/U67 (also SIT3232EEUE) connect to the GOWIN FPGA (GW5AT676),
+ * not directly to the SoC.  Their enablement depends on FPGA firmware.
+ */
+&uart0 {
+	pinctrl-0 = <&uart0m2_xfer>;
+	status = "okay";
+};
+
 / {
 	model = "MUSE RK3588 Board";
 	compatible = "muse,rk3588-muse", "rockchip,rk3588";
