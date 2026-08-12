@@ -49,6 +49,77 @@
 	status = "okay";
 };
 
+/*
+ * UART5 M1 — RS485 ×2 (J23 connector, carrier-board schematic)
+ *
+ * Hardware path:
+ *   SoC UART5_TX_M1 (GPIO3_C4, ball AH26) → R316 → U27 DI / R338 → U31 DI
+ *   U27 RO → R307 → SoC UART5_RX_M1 (GPIO3_C5, ball AH25)
+ *   U31 RO → R332 → SoC UART5_RX_M1 (same net — parallel receive)
+ *
+ *   U27 = MAX3485/SIT3485E (3.3V RS485 transceiver)
+ *     A/B → R309/R306 → J23 pin 11 (TX0) / pin 9 (RX0)
+ *   U31 = MAX3485/SIT3485E (3.3V RS485 transceiver)
+ *     A/B → R335/R334 → J23 pin 12 (TX1) / pin 10 (RX1)
+ *
+ * Direction control: hardware auto-direction via Q35/Q36 NPN transistors.
+ *   Q35/Q36 base driven by UART5_TX through R319/R340.
+ *   When TX idle (high): Q35/Q36 on → DE/RE low → receive mode.
+ *   When TX active (low): Q35/Q36 off → DE/RE pulled high by R304/R331 → transmit mode.
+ *   No GPIO needed for RS485 direction control.
+ *
+ * Pinctrl: uart5m1_xfer (M1 mux: TX=GPIO3_C4, RX=GPIO3_C5).
+ * Connector: J23 (KF2EDGR-3.81-2×6P, 12-pin 3.81mm terminal block).
+ */
+&uart5 {
+	pinctrl-0 = <&uart5m1_xfer>;
+	status = "okay";
+};
+
+/*
+ * UART8 M0 — RS422 channel 1 (J24 connector, carrier-board schematic)
+ *
+ * Hardware path:
+ *   SoC UART8_TX_M0 (GPIO4_B0, ball AK26) → R315 → U28 DI (pin 6)
+ *   U28 RO (pin 3) → R311 → SoC UART8_RX_M0 (GPIO4_B1, ball AL24)
+ *   U28 = ISO3082 (isolated RS485/RS422 transceiver, 3.3V↔5V isolation)
+ *     Y/Z (pins 11/12) → R321/R323 → U29 PSM712 ESD → J24 pin 11/12 (TX1+/-)
+ *     A/B (pins 14/13) → R326/R328 → U30 PSM712 ESD → J24 pin 9/10 (RX1+/-)
+ *
+ * Direction control (RS422 full-duplex, always enabled):
+ *   DE  (pin 5) ← GPIO1_A7 (ball C25)  — gpio-hog output-high
+ *   /RE (pin 4) ← GPIO4_B2 (ball AK25) — gpio-hog output-low
+ *
+ * Pinctrl: uart8m0_xfer (M0 mux: TX=GPIO4_B0, RX=GPIO4_B1).
+ * Connector: J24 (KF2EDGR-3.81-2×6P, 12-pin 3.81mm terminal block, pins 9-12).
+ */
+&uart8 {
+	pinctrl-0 = <&uart8m0_xfer>;
+	status = "okay";
+};
+
+/*
+ * UART9 M2 — RS422 channel 2 (J24 connector, carrier-board schematic)
+ *
+ * Hardware path:
+ *   SoC UART9_TX_M2 (GPIO3_D5, ball AB28) → R346 → U32 DI (pin 6)
+ *   U32 RO (pin 3) → R343 → SoC UART9_RX_M2 (GPIO3_D4, ball AA27)
+ *   U32 = ISO3082 (isolated RS485/RS422 transceiver, 3.3V↔5V isolation)
+ *     Y/Z (pins 11/12) → R348/R350 → U33 PSM712 ESD → J24 pin 5/6 (TX2+/-)
+ *     A/B (pins 14/13) → R355/R357 → U35 PSM712 ESD → J24 pin 3/4 (RX2+/-)
+ *
+ * Direction control (RS422 full-duplex, always enabled):
+ *   DE  (pin 5) ← GPIO3_D0 (ball AH24) — gpio-hog output-high
+ *   /RE (pin 4) ← GPIO3_C7 (ball AJ24) — gpio-hog output-low
+ *
+ * Pinctrl: uart9m2_xfer (M2 mux: TX=GPIO3_D5, RX=GPIO3_D4).
+ * Connector: J24 (KF2EDGR-3.81-2×6P, 12-pin 3.81mm terminal block, pins 3-6).
+ */
+&uart9 {
+	pinctrl-0 = <&uart9m2_xfer>;
+	status = "okay";
+};
+
 / {
 	model = "MUSE RK3588 Board";
 	compatible = "muse,rk3588-muse", "rockchip,rk3588";
@@ -851,6 +922,50 @@
 		gpios = <RK_PB2 GPIO_ACTIVE_HIGH>;
 		output-high;
 		line-name = "4g_5g_rstn";
+	};
+};
+
+/*
+ * RS422 DE/RE direction-control GPIOs (ISO3082 isolated transceivers).
+ *
+ * UART8 (U28) RS422 channel 1 — full-duplex, always enabled:
+ *   DE  = GPIO1_A7 (ball C25)  → output-high (driver always on)
+ *   /RE = GPIO4_B2 (ball AK25) → output-low  (receiver always on)
+ *
+ * UART9 (U32) RS422 channel 2 — full-duplex, always enabled:
+ *   DE  = GPIO3_D0 (ball AH24) → output-high (driver always on)
+ *   /RE = GPIO3_C7 (ball AJ24) → output-low  (receiver always on)
+ */
+&gpio1 {
+	uart8-de-hog {
+		gpio-hog;
+		gpios = <RK_PA7 GPIO_ACTIVE_HIGH>;
+		output-high;
+		line-name = "uart8_de";
+	};
+};
+
+&gpio3 {
+	uart9-de-hog {
+		gpio-hog;
+		gpios = <RK_PD0 GPIO_ACTIVE_HIGH>;
+		output-high;
+		line-name = "uart9_de";
+	};
+	uart9-re-hog {
+		gpio-hog;
+		gpios = <RK_PC7 GPIO_ACTIVE_HIGH>;
+		output-low;
+		line-name = "uart9_re_n";
+	};
+};
+
+&gpio4 {
+	uart8-re-hog {
+		gpio-hog;
+		gpios = <RK_PB2 GPIO_ACTIVE_HIGH>;
+		output-low;
+		line-name = "uart8_re_n";
 	};
 };
 
