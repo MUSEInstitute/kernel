@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 /*
- * Copyright (c) 2026 MUSE Institute
+ * Copyright (c) 2026 MUSE Group
  *
  * Device Tree for MUSE RK3588 Board
  * - eMMC boot
