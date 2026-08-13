@@ -343,7 +343,6 @@
  *   - FSPI_D3   → SoC GPIO2_D3 (ball AA33), via R1303 (0Ω) — shared w/ EMMC_D3
  *   - VCC = VCC_1V8 (pin 8, 1.8V)
  *   - Pull-ups: R4300 (10K on FSPI_D2), R4301 (10K on FSPI_D3) to VCC_1V8
- *   - Level shifter U4301 (SN74LVC1T45) on CS0 path
  *
  * The SFC controller (rockchip,sfc @ 0xfe2b0000) uses FSPI M0 pins (mux 2).
  * Since eMMC (mux 1) is the active boot device, SFC must stay disabled to
