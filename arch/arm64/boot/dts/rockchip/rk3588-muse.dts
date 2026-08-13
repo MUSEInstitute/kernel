@@ -314,7 +314,8 @@
  *     (10K pull-up R4002 to VCC_1V8, decoupling C4009)
  *   - VCC  = VCC_3V3 (3.3V, pins E6/F5/J10/K9)
  *   - VCCQ = VCC_1V8 (1.8V fixed, pins P5/C6/M4/N4/P3) — enables HS400/HS400ES
- *   - Pull-ups: R4000 (10K on D0), R4001 (10K on CMD), R4004 (47K on DS)
+ *   - Pull-ups: R4000 (10K on D0), R4001 (10K on CMD) to VCC_1V8
+ *     (R4004 47K to GND on DS is DNP — not populated)
  *
  * Pinmux: handled by rk3588s-pinctrl.dtsi emmc_bus8 / emmc_clk /
  * emmc_cmd / emmc_data_strobe (mux 1, no board override needed).
