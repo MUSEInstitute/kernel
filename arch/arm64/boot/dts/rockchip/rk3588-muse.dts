@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 /*
- * Copyright (c) 2024 MUSE Institute
+ * Copyright (c) 2026 MUSE Institute
  *
  * Device Tree for MUSE RK3588 Board
  * - eMMC boot
@@ -50,22 +50,41 @@
 };
 
 /*
- * UART5 M1 — RS485 ×2 (J23 connector, carrier-board schematic)
+ * UART3 M2 — RS485 channel 1 (J23 connector, carrier-board schematic)
  *
  * Hardware path:
- *   SoC UART5_TX_M1 (GPIO3_C4, ball AH26) → R316 → U27 DI / R338 → U31 DI
- *   U27 RO → R307 → SoC UART5_RX_M1 (GPIO3_C5, ball AH25)
- *   U31 RO → R332 → SoC UART5_RX_M1 (same net — parallel receive)
- *
- *   U27 = MAX3485/SIT3485E (3.3V RS485 transceiver)
+ *   SoC UART3_TX_M2 (GPIO4_A5, ball AK27) → R316 → U27 DI
+ *   U27 RO → R307 → SoC UART3_RX_M2 (GPIO4_A6, ball AL27)
+ *   U27 = SIT3485E (3.3V RS485 transceiver)
  *     A/B → R309/R306 → J23 pin 11 (TX0) / pin 9 (RX0)
- *   U31 = MAX3485/SIT3485E (3.3V RS485 transceiver)
+ *
+ * Direction control: hardware auto-direction via Q35 NPN transistor.
+ *   Q35 base driven by UART3_TX through R319.
+ *   When TX idle (high): Q35 on → DE/RE low → receive mode.
+ *   When TX active (low): Q35 off → DE/RE pulled high by R304 → transmit mode.
+ *   No GPIO needed for RS485 direction control.
+ *
+ * Pinctrl: uart3m2_xfer (M2 mux: TX=GPIO4_A5, RX=GPIO4_A6).
+ * Connector: J23 (KF2EDGR-3.81-2×6P, 12-pin 3.81mm terminal block).
+ */
+&uart3 {
+	pinctrl-0 = <&uart3m2_xfer>;
+	status = "okay";
+};
+
+/*
+ * UART5 M1 — RS485 channel 2 (J23 connector, carrier-board schematic)
+ *
+ * Hardware path:
+ *   SoC UART5_TX_M1 (GPIO3_C4, ball AH26) → R338 → U31 DI
+ *   U31 RO → R332 → SoC UART5_RX_M1 (GPIO3_C5, ball AH25)
+ *   U31 = SIT3485E (3.3V RS485 transceiver)
  *     A/B → R335/R334 → J23 pin 12 (TX1) / pin 10 (RX1)
  *
- * Direction control: hardware auto-direction via Q35/Q36 NPN transistors.
- *   Q35/Q36 base driven by UART5_TX through R319/R340.
- *   When TX idle (high): Q35/Q36 on → DE/RE low → receive mode.
- *   When TX active (low): Q35/Q36 off → DE/RE pulled high by R304/R331 → transmit mode.
+ * Direction control: hardware auto-direction via Q36 NPN transistor.
+ *   Q36 base driven by UART5_TX through R340.
+ *   When TX idle (high): Q36 on → DE/RE low → receive mode.
+ *   When TX active (low): Q36 off → DE/RE pulled high by R331 → transmit mode.
  *   No GPIO needed for RS485 direction control.
  *
  * Pinctrl: uart5m1_xfer (M1 mux: TX=GPIO3_C4, RX=GPIO3_C5).
@@ -82,7 +101,7 @@
  * Hardware path:
  *   SoC UART8_TX_M0 (GPIO4_B0, ball AK26) → R315 → U28 DI (pin 6)
  *   U28 RO (pin 3) → R311 → SoC UART8_RX_M0 (GPIO4_B1, ball AL24)
- *   U28 = ISO3082 (isolated RS485/RS422 transceiver, 3.3V↔5V isolation)
+ *   U28 = CA-IS3086WX (isolated RS485/RS422 transceiver, 3.3V↔5V isolation)
  *     Y/Z (pins 11/12) → R321/R323 → U29 PSM712 ESD → J24 pin 11/12 (TX1+/-)
  *     A/B (pins 14/13) → R326/R328 → U30 PSM712 ESD → J24 pin 9/10 (RX1+/-)
  *
@@ -104,7 +123,7 @@
  * Hardware path:
  *   SoC UART9_TX_M2 (GPIO3_D5, ball AB28) → R346 → U32 DI (pin 6)
  *   U32 RO (pin 3) → R343 → SoC UART9_RX_M2 (GPIO3_D4, ball AA27)
- *   U32 = ISO3082 (isolated RS485/RS422 transceiver, 3.3V↔5V isolation)
+ *   U32 = CA-IS3086WX (isolated RS485/RS422 transceiver, 3.3V↔5V isolation)
  *     Y/Z (pins 11/12) → R348/R350 → U33 PSM712 ESD → J24 pin 5/6 (TX2+/-)
  *     A/B (pins 14/13) → R355/R357 → U35 PSM712 ESD → J24 pin 3/4 (RX2+/-)
  *
@@ -926,7 +945,7 @@
 };
 
 /*
- * RS422 DE/RE direction-control GPIOs (ISO3082 isolated transceivers).
+ * RS422 DE/RE direction-control GPIOs (CA-IS3086WX isolated transceivers).
  *
  * UART8 (U28) RS422 channel 1 — full-duplex, always enabled:
  *   DE  = GPIO1_A7 (ball C25)  → output-high (driver always on)
