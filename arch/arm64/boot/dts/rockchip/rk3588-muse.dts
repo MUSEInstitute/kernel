@@ -1329,25 +1329,37 @@
 };
 
 /*
- * USB2 Host1: CH334H 4-port USB 2.0 hub (C276).
+ * USB2 Host1: GL852GT 4-port USB 2.0 hub (U50).
  *
- * Hardware (from carrier-board schematic):
- *   - CH334H is a 4-port USB 2.0 hub controller
+ * Hardware (from carrier-board netlist):
+ *   - U50: GL852GT (Genesys Logic) 4-port USB 2.0 hub controller
+ *   - Upstream D+/D− → SoC USB20_HOST1 (balls AM7/AL7)
  *   - VBUS 5V always-on (no enable GPIO)
  *   - Reset via NPOR_u (PMU power-on reset, auto-release — no GPIO)
- *   - USB2 D+/D− upstream port to SoC, 4× downstream D+/D−
  *
- * Downstream devices on CH334H hub:
- *   - FCU761K-L WiFi/BT module (Quectel, AIC8800DC chip, USB 2.0)
- *     WiFi: 2.4 GHz 1×1, USB 2.0 full-speed enumeration
- *     BT:   Bluetooth 4.2 BR/EDR, USB 2.0
- *     Driver: aic8800 (out-of-tree, CONFIG_AIC_WLAN_SUPPORT=m)
- *     Firmware: /lib/firmware/aic8800DC/ (pre-staged in rootfs overlay)
- *     No DTS node needed — USB auto-enumerates; no GPIO/power control.
+ * Downstream ports on GL852GT hub:
+ *   Port 1-2: USB header P7 (2×5-pin IDC) + ESD protection (U51)
+ *   Port 3:   FCU761K-L WiFi/BT combo module (U9901) via common-mode
+ *             choke L19 (ICMEF112P900MFR)
+ *   Port 4:   4G/5G modem connector CON1
  *
- * The CH334H is a standard USB hub; it auto-enumerates once the host
- * controller is active.  No board-specific DTS node needed for the hub
- * itself — only the host controller + PHY.
+ * FCU761K-L WiFi/BT module (U9901) — USB 2.0 interface:
+ *   - Chip: AIC8800DC (WiFi 2.4 GHz 1×1 + BT 4.2 BR/EDR)
+ *   - Driver: aic8800 (out-of-tree, CONFIG_AIC_WLAN_SUPPORT=m)
+ *   - Firmware: /lib/firmware/aic8800DC/ (pre-staged in rootfs overlay)
+ *   - CHIP_EN (pin 16) → GPIO4_A7 (ball AM27)
+ *       Pulled high by R9927 (20K to VDD_3V3) → module always enabled
+ *   - BT_WAKE_HOST  (pin 9)  → GPIO1_A3 (ball A27) — BT→host wake
+ *   - HOST_WAKE_BT  (pin 10) → GPIO1_A2 (ball A26) — host→BT wake
+ *   - HOST_WAKE_WLAN(pin 19) → GPIO3_C0 (ball Y29) — host→WiFi wake
+ *   - WLAN_WAKE_HOST(pin 20) → GPIO3_C1 (ball Y27) — WiFi→host wake
+ *   - DBG_TXD/RXD (pins 21/22) → test points only, not connected to SoC
+ *
+ * No DTS node needed for the module or hub — USB auto-enumerates.
+ * CHIP_EN is hardwired high (always on), so no power-control GPIO.
+ * The 4 wake GPIOs are for suspend/resume power management only;
+ * they are not required for basic WiFi/BT operation and are typically
+ * handled by the aic8800 driver internally.
  */
 &u2phy3 {
 	status = "okay";
