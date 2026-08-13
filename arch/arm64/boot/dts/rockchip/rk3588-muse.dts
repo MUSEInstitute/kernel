@@ -143,7 +143,7 @@
 	model = "MUSE RK3588 Board";
 	compatible = "muse,rk3588-muse", "rockchip,rk3588";
 
-	/* 16 MHz crystal for MCP2515 CAN controllers (Y7/U34, Y8/U38) */
+	/* 16 MHz crystal for XL2515 CAN controllers (Y7/U34, Y8/U38) */
 	clk_16m_can: clk-16m-can {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
@@ -1434,14 +1434,17 @@
 };
 
 /*
- * SPI1 + MCP2515 CAN controllers (carrier board, verified against netlist).
+ * SPI1 + XL2515 CAN controllers (carrier board, verified against netlist).
  *
- * Two MCP2515 stand-alone CAN controllers (U34, U38) on SPI1 (M2 mux):
+ * Two MCP2515-compatible CAN controllers (U34=XL2515, U38=XL2515) on SPI1
+ * (M2 mux). XL2515 is a register-compatible clone of MCP2515; the kernel
+ * mcp251x driver has no separate compatible string for XL2515, so we use
+ * "microchip,mcp2515".
  *   - SPI1 M2: CLK=F28/GPIO1_D2, MOSI=F27/GPIO1_D1, MISO=F26/GPIO1_D0
  *   - CS0=E28/GPIO1_D3 (U34), CS1=G26/GPIO1_D5 (U38)
  *   - Level shifter U17 (TXS0102) between SoC 1.8V and 3.3V domains
  *
- * CAN channel 0 (U34, MCP2515):
+ * CAN channel 0 (U34, XL2515):
  *   - SPI chip select: SPI1 CS0 (M2)
  *   - Interrupt: GPIO4_B5 (A/AJ26, CAN0_NINT, active-low)
  *   - Reset: GPIO3_D3 (A/AG24, CAN0_NRST) — RC power-on reset via R364/C201;
@@ -1449,7 +1452,7 @@
  *   - Crystal: Y7 = 16 MHz
  *   - Transceiver: U36 (ISO1050, galvanically isolated)
  *
- * CAN channel 1 (U38, MCP2515):
+ * CAN channel 1 (U38, XL2515):
  *   - SPI chip select: SPI1 CS1 (M2)
  *   - Interrupt: GPIO3_D2 (A/AG25, CAN1_NINT, active-low)
  *   - Reset: GPIO0_C7 (A/V31, CAN1_NRST) — RC power-on reset via R378/C208;
@@ -1517,8 +1520,8 @@
  *   xl9555_int: interrupt pin = GPIO4_A0, active-low, pull-up (open-drain INT output).
  *
  * CAN controllers:
- *   can0_int: MCP2515 U34 interrupt = GPIO4_B5, active-low, pull-up.
- *   can1_int: MCP2515 U38 interrupt = GPIO3_D2, active-low, pull-up.
+ *   can0_int: XL2515 U34 interrupt = GPIO4_B5, active-low, pull-up.
+ *   can1_int: XL2515 U38 interrupt = GPIO3_D2, active-low, pull-up.
  *
  * NOTE: The board power button is PMIC_PWRONN (PMIC internal, no GPIO needed).
  */
